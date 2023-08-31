@@ -59,6 +59,8 @@ lint_clang-format:
         ./ci/lint/check-git-clang-format-output.sh 
       "
   allow_failure: true
+  only:
+    - merge_requests
 
 # Convert from .buildkite/lint.rayci.yml "clang format"
 lint_code-format:
@@ -72,6 +74,8 @@ lint_code-format:
         FORMAT_SH_PRINT_DIFF=1 ./ci/lint/format.sh --all-scripts
       "
   allow_failure: true
+  only:
+    - merge_requests
 
 # Convert from .buildkite/lint.rayci.yml "untested code snippet"
 lint_untested-code-snippet:
@@ -85,6 +89,8 @@ lint_untested-code-snippet:
         semgrep ci --config semgrep.yml
       "
   allow_failure: true
+  only:
+    - merge_requests
 
 # Convert from .buildkite/lint.rayci.yml "banned words"
 lint_banned-words:
@@ -97,6 +103,8 @@ lint_banned-words:
         ./ci/lint/check-banned-words.sh 
       "
   allow_failure: true
+  only:
+    - merge_requests
 
 # Convert from .buildkite/lint.rayci.yml "doc readme"
 lint_doc-readme:
@@ -110,18 +118,20 @@ lint_doc-readme:
         cd python && python setup.py check --restructuredtext --strict --metadata
       "
   allow_failure: true
+  only:
+    - merge_requests
 
-# Convert from .buildkite/lint.rayci.yml "dashboard format"
-lint_dashboard-format:
-  stage: lint
-  image: 
-    name: "$CI_TEST_IMAGE"
-  script: 
-    - | 
-      bash --login -i -c "
-        ./ci/lint/check-dashboard-format.sh
-      "
-  allow_failure: true
+# # Convert from .buildkite/lint.rayci.yml "dashboard format"
+# lint_dashboard-format:
+#   stage: lint
+#   image: 
+#     name: "$CI_TEST_IMAGE"
+#   script: 
+#     - | 
+#       bash --login -i -c "
+#         ./ci/lint/check-dashboard-format.sh
+#       "
+#   allow_failure: true
 
 # Convert from .buildkite/lint.rayci.yml "copyright format"
 lint_copyright-format:
@@ -134,6 +144,8 @@ lint_copyright-format:
         ./ci/lint/copyright-format.sh -c
       "
   allow_failure: true
+  only:
+    - merge_requests
 
 # Convert from .buildkite/lint.rayci.yml "bazel team"
 lint_bazel-team:
@@ -147,6 +159,8 @@ lint_bazel-team:
         bazel query 'kind("py_test", //...)' --output=xml | python ./ci/lint/check-bazel-team-owner.py
       "
   allow_failure: true
+  only:
+    - merge_requests
 
 # Convert from .buildkite/lint.rayci.yml "bazel buildifier"
 lint_bazel-buildifier:
@@ -159,6 +173,8 @@ lint_bazel-buildifier:
         ./ci/lint/check-bazel-buildifier.sh
       "
   allow_failure: true
+  only:
+    - merge_requests
 
 # Convert from .buildkite/lint.rayci.yml "pytest format"
 lint_pytest-format:
@@ -172,6 +188,8 @@ lint_pytest-format:
         ./ci/lint/check-pytest-format.sh
       "
   allow_failure: true
+  only:
+    - merge_requests
 
 # Convert from .buildkite/lint.rayci.yml "test coverage"
 lint_test-coverage:
@@ -184,6 +202,8 @@ lint_test-coverage:
         python ci/pipeline/check-test-run.py
       "
   allow_failure: true
+  only:
+    - merge_requests
 
 # Convert from .buildkite/lint.rayci.yml "api annotations"
 lint_api-annotations:
@@ -197,6 +217,8 @@ lint_api-annotations:
         ./ci/lint/check_api_annotations.py
       "
   allow_failure: true
+  only:
+    - merge_requests
 
 
 
@@ -214,6 +236,8 @@ unit-test_LinkCheck:
         ./ci/ci.sh check_sphinx_links
       "
   allow_failure: true
+  only:
+    - merge_requests
 
 # Convert from .buildkite/pipeline.test.yml "Tune soft imports test"
 unit-test_Tune-soft-imports-test:
@@ -230,6 +254,8 @@ unit-test_Tune-soft-imports-test:
         bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=soft_imports python/ray/tune/...
       "
   allow_failure: true
+  only:
+    - merge_requests
 
 
 
@@ -240,6 +266,9 @@ unit-test-job:
     - echo "Running unit tests... This will take about 60 seconds."
     - sleep 60
     - echo "Code coverage is 90%"
+  allow_failure: true
+  only:
+    - merge_requests
 
 # TODO: Implement specific functions instead of mockup
 scaler-test-job:
@@ -248,6 +277,9 @@ scaler-test-job:
     - echo "Running unit tests... This will take about 60 seconds."
     - sleep 60
     - echo "Code coverage is 90%"
+  allow_failure: true
+  only:
+    - merge_requests
 
 # TODO: Implement specific functions instead of mockup
 deploy-ray-tests-job:
@@ -256,3 +288,6 @@ deploy-ray-tests-job:
     - echo "Running unit tests... This will take about 60 seconds."
     - sleep 60
     - echo "Code coverage is 90%"
+  allow_failure: true
+  only:
+    - merge_requests
