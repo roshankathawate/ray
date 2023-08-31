@@ -1,0 +1,258 @@
+# This file is a template, and might need editing before it works on your project.
+# This is a sample GitLab CI/CD configuration file that should run without any modifications.
+# It demonstrates a basic 3 stage CI/CD pipeline. Instead of real tests or scripts,
+# it uses echo commands to simulate the pipeline execution.
+#
+# A pipeline is composed of independent jobs that run scripts, grouped into stages.
+# Stages run in sequential order, but jobs within stages run in parallel.
+#
+# For more information, see: https://docs.gitlab.com/ee/ci/yaml/index.html#stages
+#
+# You can copy and paste this template into a new `.gitlab-ci.yml` file.
+# You should not add this template to an existing `.gitlab-ci.yml` file by using the `include:` keyword.
+#
+# To contribute improvements to CI/CD templates, please follow the Development guide at:
+# https://docs.gitlab.com/ee/development/cicd/templates.html
+# This specific template is located at:
+# https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/ci/templates/Getting-Started.gitlab-ci.yml
+
+stages:          # List of stages for jobs, and their order of execution
+  - build_base_image
+  - lint
+  - unit-test
+  - vsphere_extension_tests
+  - functionality_tests
+
+variables:
+  CI_BASE_IMAGE: $PROD_URL/ray_taiga_cicd/oss-ci-base_test
+  CI_TEST_IMAGE: $PROD_URL/ray_taiga_cicd/oss-ci_test
+  # DOCKER_DRIVER: overlay
+  DEFAULT_BRANCH: remotes/origin/oss-master
+
+# $CI_BASE_IMAGE is the basis of lint and unit test and needs to be updated in time. 
+# Since each build is time-consuming, it is only updated when it is a dev branch.
+ci_env_docker_build:
+  stage: build_base_image
+  image: docker:latest
+  script: 
+    - echo "$PROD_API_USER" "$PROD_API_KEY"
+    - docker login -u "$PROD_API_USER" -p "$PROD_API_KEY" "$PROD_URL"
+    - docker pull $CI_BASE_IMAGE || true
+    - docker pull $CI_TEST_IMAGE || true
+    - docker build -t $CI_BASE_IMAGE --cache-from $CI_BASE_IMAGE -f ./ci/docker/base.test.Dockerfile .
+    - sed -i '18s/SKIP_BAZEL_BUILD=1 RAY_INSTALL_JAVA=0 //' ./ci/docker/test.Dockerfile
+    - docker build --build-arg DOCKER_IMAGE_BASE_TEST=$CI_BASE_IMAGE -t $CI_TEST_IMAGE --cache-from $CI_TEST_IMAGE -f ./ci/docker/test.Dockerfile .
+    - docker push $CI_BASE_IMAGE
+    - docker push $CI_TEST_IMAGE
+  only:
+    - oss-master
+
+# Convert from .buildkite/lint.rayci.yml "clang format"
+lint_clang-format:
+  stage: lint
+  image: 
+    name: "$CI_TEST_IMAGE"
+  script: 
+    - | 
+      bash --login -i -c "
+        pip install -c python/requirements_compiled.txt clang-format
+        ./ci/lint/check-git-clang-format-output.sh 
+      "
+  allow_failure: true
+
+# Convert from .buildkite/lint.rayci.yml "clang format"
+lint_code-format:
+  stage: lint
+  image: 
+    name: "$CI_TEST_IMAGE"
+  script:
+    - | 
+      bash --login -i -c "
+        pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
+        FORMAT_SH_PRINT_DIFF=1 ./ci/lint/format.sh --all-scripts
+      "
+  allow_failure: true
+
+# Convert from .buildkite/lint.rayci.yml "untested code snippet"
+lint_untested-code-snippet:
+  stage: lint
+  image: 
+    name: "$CI_TEST_IMAGE"
+  script: 
+    - | 
+      bash --login -i -c "
+        pip install -c python/requirements_compiled.txt semgrep
+        semgrep ci --config semgrep.yml
+      "
+  allow_failure: true
+
+# Convert from .buildkite/lint.rayci.yml "banned words"
+lint_banned-words:
+  stage: lint
+  image: 
+    name: "$CI_TEST_IMAGE"
+  script: 
+    - |
+      bash --login -i -c "
+        ./ci/lint/check-banned-words.sh 
+      "
+  allow_failure: true
+
+# Convert from .buildkite/lint.rayci.yml "doc readme"
+lint_doc-readme:
+  stage: lint
+  image: 
+    name: "$CI_TEST_IMAGE"
+  script: 
+    - | 
+      bash --login -i -c "
+        pip install -c python/requirements_compiled.txt docutils
+        cd python && python setup.py check --restructuredtext --strict --metadata
+      "
+  allow_failure: true
+
+# Convert from .buildkite/lint.rayci.yml "dashboard format"
+lint_dashboard-format:
+  stage: lint
+  image: 
+    name: "$CI_TEST_IMAGE"
+  script: 
+    - | 
+      bash --login -i -c "
+        ./ci/lint/check-dashboard-format.sh
+      "
+  allow_failure: true
+
+# Convert from .buildkite/lint.rayci.yml "copyright format"
+lint_copyright-format:
+  stage: lint
+  image: 
+    name: "$CI_TEST_IMAGE"
+  script: 
+    - | 
+      bash --login -i -c "
+        ./ci/lint/copyright-format.sh -c
+      "
+  allow_failure: true
+
+# Convert from .buildkite/lint.rayci.yml "bazel team"
+lint_bazel-team:
+  stage: lint
+  image: 
+    name: "$CI_TEST_IMAGE"
+  script: 
+    - | 
+      bash --login -i -c "
+        bazel query 'kind("cc_test", //...)' --output=xml | python ./ci/lint/check-bazel-team-owner.py
+        bazel query 'kind("py_test", //...)' --output=xml | python ./ci/lint/check-bazel-team-owner.py
+      "
+  allow_failure: true
+
+# Convert from .buildkite/lint.rayci.yml "bazel buildifier"
+lint_bazel-buildifier:
+  stage: lint
+  image: 
+    name: "$CI_TEST_IMAGE"
+  script:
+    - | 
+      bash --login -i -c "
+        ./ci/lint/check-bazel-buildifier.sh
+      "
+  allow_failure: true
+
+# Convert from .buildkite/lint.rayci.yml "pytest format"
+lint_pytest-format:
+  stage: lint
+  image: 
+    name: "$CI_TEST_IMAGE"
+  script: 
+    - | 
+      bash --login -i -c "
+        pip install -c python/requirements_compiled.txt yq
+        ./ci/lint/check-pytest-format.sh
+      "
+  allow_failure: true
+
+# Convert from .buildkite/lint.rayci.yml "test coverage"
+lint_test-coverage:
+  stage: lint
+  image: 
+    name: "$CI_TEST_IMAGE"
+  script: 
+    - | 
+      bash --login -i -c "
+        python ci/pipeline/check-test-run.py
+      "
+  allow_failure: true
+
+# Convert from .buildkite/lint.rayci.yml "api annotations"
+lint_api-annotations:
+  stage: lint
+  image: 
+    name: "$CI_TEST_IMAGE"
+  script: 
+    - | 
+      bash --login -i -c "
+        RAY_DISABLE_EXTRA_CPP=1 pip install -e python/[all]
+        ./ci/lint/check_api_annotations.py
+      "
+  allow_failure: true
+
+
+
+
+# Convert from .buildkite/pipeline.test.yml "LinkCheck"
+unit-test_LinkCheck:
+  stage: unit-test
+  image: 
+    name: "$CI_TEST_IMAGE"
+  script: 
+    - | 
+      bash --login -i -c "
+        export LINT=1
+        ./ci/env/install-dependencies.sh
+        ./ci/ci.sh check_sphinx_links
+      "
+  allow_failure: true
+
+# Convert from .buildkite/pipeline.test.yml "Tune soft imports test"
+unit-test_Tune-soft-imports-test:
+  stage: unit-test
+  image: 
+    name: "$CI_TEST_IMAGE"
+  script: 
+    - | 
+      bash --login -i -c "
+        cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+        # no TUNE_TESTING=1 on purpose
+        ./ci/env/install-dependencies.sh
+       ./ci/env/env_info.sh
+        bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=soft_imports python/ray/tune/...
+      "
+  allow_failure: true
+
+
+
+# TODO: Implement specific functions instead of mockup
+unit-test-job:
+  stage: vsphere_extension_tests
+  script:
+    - echo "Running unit tests... This will take about 60 seconds."
+    - sleep 60
+    - echo "Code coverage is 90%"
+
+# TODO: Implement specific functions instead of mockup
+scaler-test-job:
+  stage: vsphere_extension_tests
+  script:
+    - echo "Running unit tests... This will take about 60 seconds."
+    - sleep 60
+    - echo "Code coverage is 90%"
+
+# TODO: Implement specific functions instead of mockup
+deploy-ray-tests-job:
+  stage: functionality_tests
+  script:
+    - echo "Running unit tests... This will take about 60 seconds."
+    - sleep 60
+    - echo "Code coverage is 90%"
