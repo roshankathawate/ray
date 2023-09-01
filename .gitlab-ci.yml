@@ -261,10 +261,12 @@ unit-test_Tune-soft-imports-test:
 
 pytest-test_autoscaler:
   stage: vsphere_extension_tests
+  image:
+    name: "$CI_TEST_IMAGE"
   script:
     - |
       bash --login -i -c "
-         python -m pytest -v -s python/ray/tests/test_autoscaler.py
+        python -m pytest -v -s python/ray/tests/test_autoscaler.py
       "
   allow_failure: false
   only:
