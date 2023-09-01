@@ -45,7 +45,7 @@ ci_env_docker_build:
     - docker push $CI_BASE_IMAGE
     - docker push $CI_TEST_IMAGE
   only:
-    - oss-master
+    - dev
 
 # Convert from .buildkite/lint.rayci.yml "clang format"
 lint_clang-format:
@@ -259,14 +259,16 @@ unit-test_Tune-soft-imports-test:
 
 
 
-# TODO: Implement specific functions instead of mockup
-unit-test-job:
+pytest-test_autoscaler:
   stage: vsphere_extension_tests
+  image:
+    name: "$CI_TEST_IMAGE"
   script:
-    - echo "Running unit tests... This will take about 60 seconds."
-    - sleep 60
-    - echo "Code coverage is 90%"
-  allow_failure: true
+    - |
+      bash --login -i -c "
+        python -m pytest -v -s python/ray/tests/test_autoscaler.py
+      "
+  allow_failure: false
   only:
     - merge_requests
 
