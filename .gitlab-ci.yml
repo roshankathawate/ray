@@ -29,13 +29,12 @@ variables:
   # DOCKER_DRIVER: overlay
   DEFAULT_BRANCH: remotes/origin/oss-master
 
-# $CI_BASE_IMAGE is the basis of lint and unit test and needs to be updated in time. 
+# $CI_TEST_IMAGE is the basis of lint and unit test and needs to be updated in time. 
 # Since each build is time-consuming, it is only updated when it is a dev branch.
 ci_env_docker_build:
   stage: build_base_image
   image: docker:latest
   script: 
-    - echo "$PROD_API_USER" "$PROD_API_KEY"
     - docker login -u "$PROD_API_USER" -p "$PROD_API_KEY" "$PROD_URL"
     - docker pull $CI_BASE_IMAGE || true
     - docker pull $CI_TEST_IMAGE || true
@@ -44,6 +43,7 @@ ci_env_docker_build:
     - docker build --build-arg DOCKER_IMAGE_BASE_TEST=$CI_BASE_IMAGE -t $CI_TEST_IMAGE --cache-from $CI_TEST_IMAGE -f ./ci/docker/test.Dockerfile .
     - docker push $CI_BASE_IMAGE
     - docker push $CI_TEST_IMAGE
+    - docker system prune -f
   only:
     - dev
 
