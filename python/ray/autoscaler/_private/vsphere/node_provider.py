@@ -65,6 +65,7 @@ class VsphereNodeProvider(NodeProvider):
         self.cache_stopped_nodes = provider_config.get("cache_stopped_nodes", True)
         vsphere_credentials = provider_config["vsphere_config"]["credentials"]
         self.vsphere_credentials = vsphere_credentials
+        self.vsphere_config = provider_config["vsphere_config"]
 
         self.vsphere_sdk_client = VmwSdkClient(
             vsphere_credentials["server"],
@@ -429,14 +430,12 @@ class VsphereNodeProvider(NodeProvider):
                 break
 
     def get_frozen_vm_obj(self):
-        frozen_vm_target_name = self.frozen_vm_name
-        vms = self.vsphere_sdk_client.vcenter.VM.list(
-            VM.FilterSpec(names={frozen_vm_target_name})
-        )
+        vm = self.get_pyvmomi_obj([vim.VirtualMachine], self.frozen_vm_name)
+        return vm
 
-        logger.debug("VM to clone from {}".format(vms))
-
-        return vms[0] if len(vms) > 0 else None
+    def choose_frozen_vm_obj(self):
+        vm = self.scheduler_factory.get_scheduler().choose_frozen_vm()
+        return vm
 
     def get_pyvmomi_obj(self, vimtype, name):
         """
@@ -522,7 +521,14 @@ class VsphereNodeProvider(NodeProvider):
             name=vm_name_target, location=vm_relocate_spec
         )
 
-        parent_vm = self.get_pyvmomi_obj([vim.VirtualMachine], source_vm.name)
+        parent_vm = None
+        logger.debug("source_vm={}".format(source_vm))
+        if source_vm is None:
+            parent_vm = self.choose_frozen_vm_obj()
+        else:
+            parent_vm = source_vm
+
+        logger.debug("parent_vm={}".format(parent_vm))
 
         tags[Constants.VSPHERE_NODE_STATUS] = Constants.VsphereNodeStatus.CREATING.value
         threading.Thread(target=self.tag_vm, args=(vm_name_target, tags)).start()
@@ -571,11 +577,29 @@ class VsphereNodeProvider(NodeProvider):
         created_nodes_dict = {}
         exception_happened = False
 
-        if "frozen_vm_name" in node_config:
+        frozen_vm_obj = None
+        if "frozen_vm_name" in self.vsphere_config:
             # This function either returns nothing or raise exception
-            self.frozen_vm_name = node_config["frozen_vm_name"]
+            self.frozen_vm_name = self.vsphere_config["frozen_vm_name"]
             self.check_frozen_vm_existence()
-        frozen_vm_obj = self.get_frozen_vm_obj()
+            frozen_vm_obj = self.get_frozen_vm_obj()
+        elif "frozen_vm_resource_pool" in self.vsphere_config:
+            self.frozen_vm_resource_pool_name = self.vsphere_config[
+                "frozen_vm_resource_pool"
+            ]
+            self.policy_name = (
+                self.vsphere_config["vm_schedule_policy"]
+                if "vm_schedule_policy" in self.vsphere_config
+                else ""
+            )
+            self.frozen_vms_resource_pool = self.get_pyvmomi_obj(
+                [vim.ResourcePool], self.frozen_vm_resource_pool_name
+            )
+            from ray.autoscaler._private.vsphere.scheduler import SchedulerFactory
+
+            self.scheduler_factory = SchedulerFactory(
+                self.frozen_vms_resource_pool, self.policy_name
+            )
 
         # The nodes are named as follows:
         # ray-<cluster-name>-head-<uuid> for the head node

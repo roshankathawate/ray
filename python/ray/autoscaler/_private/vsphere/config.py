@@ -53,6 +53,17 @@ def add_credentials_into_provider_section(config):
 
     provider_config = config["provider"]
 
+    if "vsphere_config" in provider_config:
+        if (
+            "frozen_vm_name" not in provider_config["vsphere_config"]
+            and "frozen_vm_resource_pool" not in provider_config["vsphere_config"]
+        ):
+            raise ValueError(
+                "frozen_vm_name/frozen_vm_resource_pool is mandatory for "
+                "bringing up the Ray cluster, contact "
+                "yourVI admin for the information."
+            )
+
     # vsphere_config is an optional field as the credentials can also be specified
     # as env variables so first check verifies if this field is present before
     # accessing its properties
@@ -132,12 +143,6 @@ def update_vsphere_configs(config):
         worker_datastore = worker_node_config["datastore"]
 
     worker_node_config["datastore"] = worker_datastore
-
-    if "frozen_vm_name" not in head_node_config:
-        raise ValueError(
-            "frozen_vm_name is mandatory for bringing up the Ray cluster, contact "
-            "yourVI admin for the information."
-        )
 
 
 def create_key_pair():
