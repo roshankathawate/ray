@@ -285,16 +285,6 @@ pytest-test_vsphere:
   only:
     - merge_requests
 
-# TODO: Implement specific functions instead of mockup
-scaler-test-job:
-  stage: vsphere_extension_tests
-  script:
-    - echo "Running unit tests... This will take about 60 seconds."
-    - sleep 60
-    - echo "Code coverage is 90%"
-  allow_failure: true
-  only:
-    - merge_requests
 
 # TODO: Implement specific functions instead of mockup
 deploy-ray-tests-job:
