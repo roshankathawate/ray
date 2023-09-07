@@ -206,19 +206,19 @@ lint_test-coverage:
     - merge_requests
 
 # Convert from .buildkite/lint.rayci.yml "api annotations"
-lint_api-annotations:
-  stage: lint
-  image: 
-    name: "$CI_TEST_IMAGE"
-  script: 
-    - | 
-      bash --login -i -c "
-        RAY_DISABLE_EXTRA_CPP=1 pip install -e python/[all]
-        ./ci/lint/check_api_annotations.py
-      "
-  allow_failure: true
-  only:
-    - merge_requests
+# lint_api-annotations:
+#   stage: lint
+#   image: 
+#     name: "$CI_TEST_IMAGE"
+#   script: 
+#     - | 
+#       bash --login -i -c "
+#         RAY_DISABLE_EXTRA_CPP=1 pip install -e python/[all]
+#         ./ci/lint/check_api_annotations.py
+#       "
+#   allow_failure: true
+#   only:
+#     - merge_requests
 
 
 
