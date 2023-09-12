@@ -27,6 +27,7 @@ def mock_vsphere_node_provider():
         self.cluster_name = cluster_name
         self.tag_cache = {}
         self.cached_nodes = {}
+        self.vsphere_config = {}
 
     with patch.object(VsphereNodeProvider, "__init__", __init__):
         node_provider = VsphereNodeProvider(_PROVIDER_CONFIG, _CLUSTER_NAME)
