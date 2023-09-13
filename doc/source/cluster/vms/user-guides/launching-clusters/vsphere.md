@@ -1,27 +1,26 @@
-
 # Launching Ray Clusters on vSphere
 
-This guide details the steps needed to start a Ray cluster in vSphere environment.
+This guide details the steps needed to launch a Ray cluster in a vSphere environment.
 
 To start a vSphere Ray cluster, you will use the Ray cluster launcher with the VMware vSphere Automation SDK for Python.
 
 ## Prepare the vSphere environment
 
-You can deploy a vSphere deployment following general [vSphere document](https://docs.vmware.com/en/VMware-vSphere/index.html). The following prerequisites are needed in order to create Ray clusters.
+If you don't already have a vSphere deployment, you can learn more about it by reading the [vSphere documentation](https://docs.vmware.com/en/VMware-vSphere/index.html). The following prerequisites are needed in order to create Ray clusters.
 * [A vSphere cluster](https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-vcenter-esxi-management/GUID-F7818000-26E3-4E2A-93D2-FCDCE7114508.html) and [resource pools](https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-resource-management/GUID-60077B40-66FF-4625-934A-641703ED7601.html) to host VMs composing Ray Clusters.
 * A network port group (either for a standard switch or distributed switch) or an NSX segment. VMs connected to this network should be able to obtain IP address via DHCP.
 * A datastore that can be accessed by all the host in the vSphere cluster.
 
-VMware Cloud Foundation (VCF) is a unified software-defined datacenter (SDDC) platform that seamlessly integrates vSphere, vSAN, and NSX into a natively integrated stack, delivering enterprise-ready cloud infrastructure for both private and public cloud environments. If you are using VCF, you can refer to the VCF documentation to  [create workload domains](https://docs.vmware.com/en/VMware-Cloud-Foundation/5.0/vcf-admin/GUID-3A478CF8-AFF8-43D9-9635-4E40A0E372AD.html) for running Ray Clusters. A VCF workload domain comprises one or more vSphere clusters, shared storage like vSAN, and a software-defined network managed by NSX. You can also [create NSX Edge Clusters using VCF](https://docs.vmware.com/en/VMware-Cloud-Foundation/5.0/vcf-admin/GUID-D17D0274-7764-43BD-8252-D9333CA7415A.html) and create segment for Ray VMs network.
+Another way to prepare the vSphere environment is with VMware Cloud Foundation (VCF). VCF is a unified software-defined datacenter (SDDC) platform that seamlessly integrates vSphere, vSAN, and NSX into a natively integrated stack, delivering enterprise-ready cloud infrastructure for both private and public cloud environments. If you are using VCF, you can refer to the VCF documentation to  [create workload domains](https://docs.vmware.com/en/VMware-Cloud-Foundation/5.0/vcf-admin/GUID-3A478CF8-AFF8-43D9-9635-4E40A0E372AD.html) for running Ray Clusters. A VCF workload domain comprises one or more vSphere clusters, shared storage like vSAN, and a software-defined network managed by NSX. You can also [create NSX Edge Clusters using VCF](https://docs.vmware.com/en/VMware-Cloud-Foundation/5.0/vcf-admin/GUID-D17D0274-7764-43BD-8252-D9333CA7415A.html) and create segment for Ray VMs network.
 
 ## Prepare the frozen VM
 
-The vSphere Ray cluster launcher requires the vSphere environment to have a VM in a frozen state prior to deploying a Ray cluster. This VM is later used to create head and worker nodes with [instant clone](https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-vm-administration/GUID-853B1E2B-76CE-4240-A654-3806912820EB.html) feature. The internal details of the Ray cluster provisioning process using frozen VM can be found in this [Ray on vSphere architecture document](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/vsphere/ARCHITECTURE.md). 
+The vSphere Ray cluster launcher requires the vSphere environment to have a VM in a frozen state prior to deploying a Ray cluster. This VM is later used to rapidly create head and worker nodes with VMware's [instant clone](https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-vm-administration/GUID-853B1E2B-76CE-4240-A654-3806912820EB.html) technology. The internal details of the Ray cluster provisioning process using frozen VM can be found in this [Ray on vSphere architecture document](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/vsphere/ARCHITECTURE.md). 
 
 You can follow [this document](https://via.vmw.com/frozen-vm-ovf) to create and set up the frozen VM. By default, Ray clusters' head and worker node VMs will be placed in the same resource pool as the frozen VM. When building and deploying the frozen VM, there are a couple of things to note:
 
 * The VM's network adapter should be connected to the port group or NSX segment configured in above section. And the `Connect At Power On` check box should be selected.
-* After the frozen VM is built, a private key file (`ray-bootstrap-key.pem`) and a public key file (`ray_bootstrap_public_key.key`) will be generated under the HOME directory of the current user. If you want to deploy Ray clusters from another machine, these files should be copied to that machine's HOME directory to be picked by the vSphere cluster launcher.
+* After the frozen VM is built, a private key file (`ray-bootstrap-key.pem`) and a public key file (`ray_bootstrap_public_key.key`) will be generated under the HOME directory of the current user. If you want to deploy Ray clusters from another machine, these files should be copied to that machine's HOME directory to be picked up by the vSphere cluster launcher.
 * An OVF will be generated in the content library. If you want to deploy Ray clusters in other vSphere deployments, you can export the OVF and use it to create the frozen VM, instead of building it again from scratch.
 * The VM should be in powered-on status before you launch Ray clusters.
 
@@ -53,7 +52,7 @@ pip install 'git+https://github.com/vmware/vsphere-automation-sdk-python.git@v8.
 
 Once the vSphere Automation SDK is installed, you should be ready to launch your cluster using the cluster launcher. The provided [cluster config file](https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/vsphere/example-full.yaml) will create a small cluster with a head node configured to autoscale to up to two workers.
 
-Note that you need to configure your vSphere credentials and vCenter server address either via setting environment variables or filling the YAML file.
+Note that you need to configure your vSphere credentials and vCenter server address either via setting environment variables or adding them to the Ray cluster configuration YAML file.
 
 Test that it works by running the following commands from your local machine:
 
@@ -61,7 +60,7 @@ Test that it works by running the following commands from your local machine:
 # Download the example-full.yaml
 wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/vsphere/example-full.yaml
 
-# setup vSphere credentials using environment variables
+# Setup vSphere credentials using environment variables
 export VSPHERE_SERVER=vcenter-address.example.com
 export VSPHERE_USER=foo
 export VSPHERE_PASSWORD=bar
