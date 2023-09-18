@@ -34,7 +34,8 @@ from ray.autoscaler._private.vsphere.config import (
     USER_DATA_FILE_PATH,
     bootstrap_vsphere,
 )
-from ray.autoscaler._private.vsphere.utils import Constants, VmwSdkClient
+from ray.autoscaler._private.vsphere.sdk_provider import VmwSdkProviderFactory
+from ray.autoscaler._private.vsphere.utils import Constants
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 
@@ -70,21 +71,19 @@ class VsphereNodeProvider(NodeProvider):
         self.vsphere_credentials = vsphere_credentials
         self.vsphere_config = provider_config["vsphere_config"]
 
-        self.vsphere_sdk_client = VmwSdkClient(
+        self.vsphere_sdk_provider = VmwSdkProviderFactory(
             vsphere_credentials["server"],
             vsphere_credentials["user"],
             vsphere_credentials["password"],
-            VmwSdkClient.SessionType.UNVERIFIED,
-            VmwSdkClient.ClientType.AUTOMATION_SDK,
-        ).get_client()
-
-        self.vsphere_pyvmomi_sdk_client = VmwSdkClient(
+            VmwSdkProviderFactory.ClientType.AUTOMATION_SDK,
+        ).sdk_provider
+        self.vsphere_sdk_client = self.vsphere_sdk_provider.vsphere_sdk_client
+        self.pyvmomi_sdk_provider = VmwSdkProviderFactory(
             vsphere_credentials["server"],
             vsphere_credentials["user"],
             vsphere_credentials["password"],
-            VmwSdkClient.SessionType.UNVERIFIED,
-            VmwSdkClient.ClientType.PYVMOMI_SDK,
-        ).get_client()
+            VmwSdkProviderFactory.ClientType.PYVMOMI_SDK,
+        ).sdk_provider
 
         # Tags that we believe to actually be on VM.
         self.tag_cache = {}
@@ -430,49 +429,14 @@ class VsphereNodeProvider(NodeProvider):
                 break
 
     def get_frozen_vm_obj(self):
-        vm = self.get_pyvmomi_obj([vim.VirtualMachine], self.frozen_vm_name)
+        vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+            [vim.VirtualMachine], self.frozen_vm_name
+        )
         return vm
 
     def choose_frozen_vm_obj(self):
         vm = self.scheduler_factory.get_scheduler().choose_frozen_vm()
         return vm
-
-    def get_pyvmomi_obj(self, vimtype, name):
-        """
-        This function finds the vSphere object by the object name and the object type.
-        The object type can be "VM", "Host", "Datastore", etc.
-        The object name is a unique name under the vCenter server.
-        To check all such object information, you can go to the managed object board
-        page of your vCenter Server, such as: https://<your_vc_ip/mob
-        """
-        obj = None
-
-        # TODO: Find a better way to solve pyvmomi timeout issues
-        self.vsphere_pyvmomi_sdk_client = VmwSdkClient(
-            self.vsphere_credentials["server"],
-            self.vsphere_credentials["user"],
-            self.vsphere_credentials["password"],
-            VmwSdkClient.SessionType.UNVERIFIED,
-            VmwSdkClient.ClientType.PYVMOMI_SDK,
-        ).get_client()
-
-        container = self.vsphere_pyvmomi_sdk_client.viewManager.CreateContainerView(
-            self.vsphere_pyvmomi_sdk_client.rootFolder, vimtype, True
-        )
-
-        for c in container.view:
-            if name:
-                if c.name == name:
-                    obj = c
-                    break
-            else:
-                obj = c
-                break
-        if not obj:
-            raise RuntimeError(
-                f"Unexpected: cannot find vSphere object {vimtype} with name: {name}"
-            )
-        return obj
 
     # This method is used to tag VMs as soon as they show up on vCenter.
     def tag_vm(self, vm_name, tags):
@@ -501,14 +465,18 @@ class VsphereNodeProvider(NodeProvider):
         # If resource pool is not provided in the config yaml, then the resource pool
         # of the frozen VM will also be the resource pool of the new VM.
         resource_pool = (
-            self.get_pyvmomi_obj([vim.ResourcePool], node_config["resource_pool"])
+            self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+                [vim.ResourcePool], node_config["resource_pool"]
+            )
             if "resource_pool" in node_config and node_config["resource_pool"]
             else None
         )
         # If datastore is not provided in the config yaml, then the datastore
         # of the frozen VM will also be the resource pool of the new VM.
         datastore = (
-            self.get_pyvmomi_obj([vim.Datastore], node_config["datastore"])
+            self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+                [vim.Datastore], node_config["datastore"]
+            )
             if "datastore" in node_config and node_config["datastore"]
             else None
         )
@@ -521,14 +489,18 @@ class VsphereNodeProvider(NodeProvider):
             name=vm_name_target, location=vm_relocate_spec
         )
 
-        parent_vm = self.get_pyvmomi_obj([vim.VirtualMachine], source_vm.name)
+        parent_vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+            [vim.VirtualMachine], source_vm.name
+        )
 
         tags[Constants.VSPHERE_NODE_STATUS] = Constants.VsphereNodeStatus.CREATING.value
         threading.Thread(target=self.tag_vm, args=(vm_name_target, tags)).start()
         # We need to wait the task, to make sure connect nic can succeed
         WaitForTask(parent_vm.InstantClone_Task(spec=instant_clone_spec))
 
-        cloned_vm = self.get_pyvmomi_obj([vim.VirtualMachine], vm_name_target)
+        cloned_vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+            [vim.VirtualMachine], vm_name_target
+        )
 
         # Get VM ID
         vm_id = cloned_vm._moId
@@ -556,7 +528,7 @@ class VsphereNodeProvider(NodeProvider):
         exception_happened = False
         vm_names = []
 
-        cluster = self.get_pyvmomi_obj(
+        cluster = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
             [vim.ClusterComputeResource], node_config["cluster"]
         )
 
@@ -736,7 +708,7 @@ class VsphereNodeProvider(NodeProvider):
 
         while time.time() - start < Constants.VM_FREEZE_TIMEOUT:
             time.sleep(Constants.VM_FREEZE_SLEEP_TIME)
-            if self.get_pyvmomi_obj(
+            if self.pyvmomi_sdk_provider.get_pyvmomi_obj(
                 [vim.VirtualMachine], vm.name
             ).runtime.instantCloneFrozen:
                 logger.info("VM {} went into frozen state successfully.".format(vm))
@@ -751,7 +723,7 @@ class VsphereNodeProvider(NodeProvider):
             if "schedule_policy" in self.vsphere_config
             else ""
         )
-        self.frozen_vms_resource_pool = self.get_pyvmomi_obj(
+        self.frozen_vms_resource_pool = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
             [vim.ResourcePool], self.frozen_vm_resource_pool_name
         )
         from ray.autoscaler._private.vsphere.scheduler import SchedulerFactory
