@@ -28,6 +28,7 @@ variables:
   CI_TEST_IMAGE: $PROD_URL/ray_taiga_cicd/oss-ci_test
   # DOCKER_DRIVER: overlay
   DEFAULT_BRANCH: remotes/origin/oss-master
+  DEFAULT_WHL: $RAY_WHL
 
 # $CI_TEST_IMAGE is the basis of lint and unit test and needs to be updated in time. 
 # Since each build is time-consuming, it is only updated when it is a dev branch.
@@ -267,7 +268,8 @@ pytest-test_basic:
     - |
       bash --login -i -c "
         pip uninstall -y ray
-        pip install -e python/[all]
+        pip install -U $RAY_WHL
+        python python/ray/setup-dev.py -y
         python -m pytest -v -s python/ray/tests/test_basic.py
       "
   allow_failure: true
@@ -282,7 +284,8 @@ pytest-test_vsphere:
     - |
       bash --login -i -c "
         pip uninstall -y ray
-        pip install -e python/[all]
+        pip install -U $RAY_WHL
+        python python/ray/setup-dev.py -y
         python -m pytest -v -s python/ray/tests/vsphere
       "
   allow_failure: false
