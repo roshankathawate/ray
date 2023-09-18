@@ -30,6 +30,7 @@ def mock_vsphere_node_provider():
         self.cached_nodes = {}
         self.vsphere_config = {}
         self.vsphere_credentials = {}
+        self.pyvmomi_sdk_provider = MagicMock()
 
     with patch.object(VsphereNodeProvider, "__init__", __init__):
         node_provider = VsphereNodeProvider(_PROVIDER_CONFIG, _CLUSTER_NAME)
