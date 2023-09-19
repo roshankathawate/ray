@@ -24,9 +24,9 @@ class VmwSdkProviderFactory:
         self.password = password
 
         if client_type == self.ClientType.PYVMOMI_SDK:
-            self.sdk_provider = self.get_pyvmomi_sdk_provider(server, user, password)
+            self.sdk_provider = self.get_pyvmomi_sdk_provider()
         elif client_type == self.ClientType.AUTOMATION_SDK:
-            self.sdk_provider = self.get_vsphere_sdk_provider(server, user, password)
+            self.sdk_provider = self.get_vsphere_sdk_provider()
         else:
             raise Exception(f"Unknown client {client_type}")
 
