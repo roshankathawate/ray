@@ -489,9 +489,14 @@ class VsphereNodeProvider(NodeProvider):
             name=vm_name_target, location=vm_relocate_spec
         )
 
-        parent_vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
-            [vim.VirtualMachine], source_vm.name
-        )
+        parent_vm = None
+        logger.debug("source_vm={}".format(source_vm))
+        if source_vm is None:
+            parent_vm = self.choose_frozen_vm_obj()
+        else:
+            parent_vm = source_vm
+
+        logger.debug("parent_vm={}".format(parent_vm))
 
         tags[Constants.VSPHERE_NODE_STATUS] = Constants.VsphereNodeStatus.CREATING.value
         threading.Thread(target=self.tag_vm, args=(vm_name_target, tags)).start()
@@ -753,7 +758,7 @@ class VsphereNodeProvider(NodeProvider):
             # present in the resource pool specified.
             elif "resource_pool" in frozen_vm_config:
                 self.initialize_frozen_vm_scheduler(frozen_vm_config)
-                frozen_vm_obj = self.choose_frozen_vm_obj()
+                frozen_vm_obj = None
 
         # If library_item is present then create new frozen VM(s)
         elif "library_item" in frozen_vm_config:
@@ -771,7 +776,7 @@ class VsphereNodeProvider(NodeProvider):
                     node_config, frozen_vm_config["name"], True
                 )
                 self.initialize_frozen_vm_scheduler(frozen_vm_config)
-                frozen_vm_obj = self.choose_frozen_vm_obj()
+                frozen_vm_obj = None
 
         return frozen_vm_obj
 

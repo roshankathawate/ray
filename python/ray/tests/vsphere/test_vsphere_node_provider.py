@@ -384,7 +384,6 @@ def test_create_new_or_fetch_existing_frozen_vms():
     node_config = {"frozen_vm": {"name": "frozen", "resource_pool": "frozen-rp"}}
     vnp.create_new_or_fetch_existing_frozen_vms(node_config)
     vnp.initialize_frozen_vm_scheduler.assert_called()
-    vnp.choose_frozen_vm_obj.assert_called()
 
     node_config = {"frozen_vm": {"name": "frozen", "library_item": "frozen"}}
     vnp.create_new_or_fetch_existing_frozen_vms(node_config)
@@ -400,7 +399,6 @@ def test_create_new_or_fetch_existing_frozen_vms():
     vnp.create_new_or_fetch_existing_frozen_vms(node_config)
     vnp.create_frozen_vm_on_each_host.assert_called()
     vnp.initialize_frozen_vm_scheduler.assert_called()
-    vnp.choose_frozen_vm_obj.assert_called()
 
 
 def test_update_vsphere_configs():
