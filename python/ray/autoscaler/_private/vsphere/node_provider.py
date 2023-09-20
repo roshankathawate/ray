@@ -528,9 +528,10 @@ class VsphereNodeProvider(NodeProvider):
         exception_happened = False
         vm_names = []
 
-        cluster = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
-            [vim.ClusterComputeResource], node_config["cluster"]
+        res_pool = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+            [vim.ResourcePool], node_config["frozen_vm"]["resource_pool"]
         )
+        cluster = res_pool.parent.parent
 
         host_filter_spec = Host.FilterSpec(clusters={cluster._moId})
         hosts = self.vsphere_sdk_client.vcenter.Host.list(host_filter_spec)
@@ -577,7 +578,9 @@ class VsphereNodeProvider(NodeProvider):
         self, node_config, vm_name_target, wait_until_frozen=False
     ):
         # Find and use the resource pool defined in the manifest file.
-        rp_filter_spec = ResourcePool.FilterSpec(names={node_config["resource_pool"]})
+        rp_filter_spec = ResourcePool.FilterSpec(
+            names={node_config["frozen_vm"]["resource_pool"]}
+        )
         resource_pool_summaries = self.vsphere_sdk_client.vcenter.ResourcePool.list(
             rp_filter_spec
         )
