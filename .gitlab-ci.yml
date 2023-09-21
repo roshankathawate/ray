@@ -30,6 +30,10 @@ variables:
   DEFAULT_BRANCH: remotes/origin/oss-master
   DEFAULT_WHL: $RAY_WHL
 
+default:
+  tags:
+    - docker
+
 # $CI_TEST_IMAGE is the basis of lint and unit test and needs to be updated in time. 
 # Since each build is time-consuming, it is only updated when it is a dev branch.
 ci_env_docker_build:
