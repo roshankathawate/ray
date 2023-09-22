@@ -96,33 +96,24 @@ class VsphereNodeProvider(NodeProvider):
         # excessive DescribeInstances requests.
         self.cached_nodes: Dict[str, VM] = {}
 
-    def check_frozen_vm_existence(self):
-        vms = self.vsphere_sdk_client.vcenter.VM.list(
-            VM.FilterSpec(names={self.frozen_vm_name})
+    def check_frozen_vm_status(self, frozen_vm_name):
+        vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+            [vim.VirtualMachine], frozen_vm_name
         )
-
-        if len(vms) == 1:
-            logger.debug("Found frozen VM with name: {}".format(self.frozen_vm_name))
-
-            vm_id = vms[0].vm
-            status = self.vsphere_sdk_client.vcenter.vm.Power.get(vm_id)
-            if status.state != HardPower.State.POWERED_ON:
-                logger.debug("Inject user data into frozen vm by cloud init")
-                self.set_cloudinit_userdata(vm_id)
-                self.vsphere_sdk_client.vcenter.vm.Power.start(vm_id)
-                logger.debug("vm.Power.start({})".format(vm_id))
-        elif len(vms) > 1:
-            # This should never happen but we need to code defensively
-            raise ValueError(
-                "Unexpected: there are more than one VMs with name {}".format(
-                    self.frozen_vm_name
-                )
-            )
-        else:
+        if vm is None:
             raise ValueError(
                 "The frozen VM {} doesn't exist on vSphere, please contact the VI "
-                "admin".format(self.frozen_vm_name)
+                "admin".format(frozen_vm_name)
             )
+        logger.info(f"Found frozen VM with name: {vm._moId}")
+
+        if vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOff:
+            logger.debug("Inject user data into frozen vm by cloud init")
+            self.set_cloudinit_userdata(vm._moId)
+            WaitForTask(vm.PowerOnVM_Task())
+
+        # Make sure it is frozen status
+        self.wait_until_vm_is_frozen(vm)
 
     @staticmethod
     def bootstrap_config(cluster_config):
@@ -734,11 +725,26 @@ class VsphereNodeProvider(NodeProvider):
         self.frozen_vms_resource_pool = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
             [vim.ResourcePool], self.frozen_vm_resource_pool_name
         )
+
+        if self.frozen_vms_resource_pool is None:
+            raise RuntimeError(
+                f"Resource Pool {self.frozen_vm_resource_pool_name} could not be found."
+            )
+
+        # Make all frozen vms on resource pool are power on and frozen
+        self.check_frozen_vms_status(self.frozen_vms_resource_pool)
+
         from ray.autoscaler._private.vsphere.scheduler import SchedulerFactory
 
         self.scheduler_factory = SchedulerFactory(
             self.frozen_vms_resource_pool, self.policy_name
         )
+
+    def check_frozen_vms_status(self, resource_pool):
+        vms = resource_pool.vm
+        for vm in vms:
+            self.check_frozen_vm_status(vm.name)
+        return
 
     def create_new_or_fetch_existing_frozen_vms(self, node_config):
         frozen_vm_obj = None
@@ -751,7 +757,7 @@ class VsphereNodeProvider(NodeProvider):
             # name as specified.
             if "resource_pool" not in frozen_vm_config:
                 self.frozen_vm_name = frozen_vm_config["name"]
-                self.check_frozen_vm_existence()
+                self.check_frozen_vm_status(self.frozen_vm_name)
                 frozen_vm_obj = self.get_frozen_vm_obj()
 
             # If resource_pool is present, select a frozen VM out of all those
