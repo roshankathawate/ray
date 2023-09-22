@@ -371,7 +371,7 @@ def test__get_node():
 def test_create_new_or_fetch_existing_frozen_vms():
     vnp = mock_vsphere_node_provider()
     vnp.get_frozen_vm_obj = MagicMock()
-    vnp.check_frozen_vm_existence = MagicMock()
+    vnp.check_frozen_vm_status = MagicMock()
     vnp.choose_frozen_vm_obj = MagicMock()
     vnp.create_frozen_vm_from_ovf = MagicMock()
     vnp.create_frozen_vm_on_each_host = MagicMock()
@@ -379,7 +379,7 @@ def test_create_new_or_fetch_existing_frozen_vms():
 
     node_config = {"frozen_vm": {"name": "frozen"}}
     vnp.create_new_or_fetch_existing_frozen_vms(node_config)
-    vnp.check_frozen_vm_existence.assert_called()
+    vnp.check_frozen_vm_status.assert_called()
 
     node_config = {"frozen_vm": {"name": "frozen", "resource_pool": "frozen-rp"}}
     vnp.create_new_or_fetch_existing_frozen_vms(node_config)
