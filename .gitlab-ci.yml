@@ -21,7 +21,9 @@ stages:          # List of stages for jobs, and their order of execution
   - lint
   - unit-test
   - vsphere_extension_tests
+  - functionality_tests-environment-deploy
   - functionality_tests
+  - functionality_tests-environment-delete
 
 variables:
   CI_BASE_IMAGE: $PROD_URL/ray_taiga_cicd/oss-ci-base_test
@@ -29,6 +31,10 @@ variables:
   # DOCKER_DRIVER: overlay
   DEFAULT_BRANCH: remotes/origin/oss-master
   DEFAULT_WHL: $RAY_WHL
+  CI_PIPELINE_ID: $CI_PIPELINE_ID
+  DEV_CPU_VSPHERE_SERVER: $DEV_CPU_VSPHERE_SERVER
+  DEV_CPU_VSPHERE_USER: $DEV_CPU_VSPHERE_USER
+  DEV_CPU_VSPHERE_PASSWORD: $DEV_CPU_VSPHERE_PASSWORD
 
 default:
   tags:
@@ -262,8 +268,6 @@ unit-test_Tune-soft-imports-test:
   only:
     - merge_requests
 
-
-
 pytest-test_basic:
   stage: vsphere_extension_tests
   image:
@@ -296,14 +300,129 @@ pytest-test_vsphere:
   only:
     - merge_requests
 
-
-# TODO: Implement specific functions instead of mockup
-deploy-ray-tests-job:
-  stage: functionality_tests
+deploy-ray:
+  stage: functionality_tests-environment-deploy
+  image:
+    name: "$CI_TEST_IMAGE"
+  variables:
+    VSPHERE_SERVER: "$DEV_CPU_VSPHERE_SERVER"
+    VSPHERE_USER: "$DEV_CPU_VSPHERE_USER"
+    VSPHERE_PASSWORD: "$DEV_CPU_VSPHERE_PASSWORD"
+    SECURE_FILES_DOWNLOAD_PATH: "key/"
+  before_script:
+    - |
+      curl -s https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer | bash
+      cp key/ray-bootstrap-key.pem ~/ray-bootstrap-key.pem
+      cp key/ray_bootstrap_public_key.key ~/ray_bootstrap_public_key.key
+      chmod 0600 ~/ray-bootstrap-key.pem
+      bash --login -i -c "
+        pip uninstall -y ray
+        pip install -U $RAY_WHL
+        python python/ray/setup-dev.py -y
+      "
+      sed -i "s/cluster_name: default.*/cluster_name: default+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i 's#image: "rayproject/ray-ml:latest"#image: "harbor-repo.vmware.com/dockerhub-proxy-cache/rayproject/ray-ml:latest"#g' python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/name: frozen-vm.*/name: frozen-vm-1/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s&#    ssh_private_key: /path/to/your/key.pem&    ssh_private_key: ~/ray-bootstrap-key.pem&g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/pull_before_run: True/pull_before_run: False/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#       credentials:/        credentials:/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           user: vc_username/            user: ${VSPHERE_USER}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           password: vc_password/            password: ${VSPHERE_PASSWORD}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           server: vc_address/            server: ${VSPHERE_SERVER}/g" python/ray/autoscaler/vsphere/example-full.yaml
   script:
-    - echo "Running unit tests... This will take about 60 seconds."
-    - sleep 60
-    - echo "Code coverage is 90%"
+    - |
+      cat python/ray/autoscaler/vsphere/example-full.yaml
+      bash --login -i -c "
+        ray up -y python/ray/autoscaler/vsphere/example-full.yaml
+      "
+  allow_failure: false
+  environment:
+    name: ray-cluster-by-pipeline/${CI_COMMIT_REF_SLUG}-${CI_PIPELINE_ID}
+    action: start
+  only:
+    - merge_requests
+
+functionality-ray-test:
+  stage: functionality_tests
+  image:
+    name: "$CI_TEST_IMAGE"
+  variables:
+    VSPHERE_SERVER: "$DEV_CPU_VSPHERE_SERVER"
+    VSPHERE_USER: "$DEV_CPU_VSPHERE_USER"
+    VSPHERE_PASSWORD: "$DEV_CPU_VSPHERE_PASSWORD"
+    SECURE_FILES_DOWNLOAD_PATH: "key/"
+  before_script:
+    - |
+      curl -s https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer | bash
+      cp key/ray-bootstrap-key.pem ~/ray-bootstrap-key.pem
+      cp key/ray_bootstrap_public_key.key ~/ray_bootstrap_public_key.key
+      chmod 0600 ~/ray-bootstrap-key.pem
+      bash --login -i -c "
+        pip uninstall -y ray
+        pip install -U $RAY_WHL
+        python python/ray/setup-dev.py -y
+      "
+      sed -i "s/cluster_name: default.*/cluster_name: default+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i 's#image: "rayproject/ray-ml:latest"#image: "harbor-repo.vmware.com/dockerhub-proxy-cache/rayproject/ray-ml:latest"#g' python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/name: frozen-vm.*/name: frozen-vm-1/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s&#    ssh_private_key: /path/to/your/key.pem&    ssh_private_key: ~/ray-bootstrap-key.pem&g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/pull_before_run: True/pull_before_run: False/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#       credentials:/        credentials:/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           user: vc_username/            user: ${VSPHERE_USER}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           password: vc_password/            password: ${VSPHERE_PASSWORD}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           server: vc_address/            server: ${VSPHERE_SERVER}/g" python/ray/autoscaler/vsphere/example-full.yaml
+  script:
+    - |
+      cat python/ray/autoscaler/vsphere/example-full.yaml
+      bash --login -i -c "
+        ray exec python/ray/autoscaler/vsphere/example-full.yaml 'python -c \"import ray; ray.init()\"'
+      "
+  allow_failure: false
+  environment:
+    name: ray-cluster-by-pipeline/${CI_COMMIT_REF_SLUG}-${CI_PIPELINE_ID}
+    action: access
+  only:
+    - merge_requests
+
+delete-ray:
+  stage: functionality_tests-environment-delete
+  image:
+    name: "$CI_TEST_IMAGE"
+  variables:
+    VSPHERE_SERVER: "$DEV_CPU_VSPHERE_SERVER"
+    VSPHERE_USER: "$DEV_CPU_VSPHERE_USER"
+    VSPHERE_PASSWORD: "$DEV_CPU_VSPHERE_PASSWORD"
+    SECURE_FILES_DOWNLOAD_PATH: "key/"
+  before_script:
+    - |
+      curl -s https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer | bash
+      cp key/ray-bootstrap-key.pem ~/ray-bootstrap-key.pem
+      cp key/ray_bootstrap_public_key.key ~/ray_bootstrap_public_key.key
+      chmod 0600 ~/ray-bootstrap-key.pem
+      bash --login -i -c "
+        pip uninstall -y ray
+        pip install -U $RAY_WHL
+        python python/ray/setup-dev.py -y
+      "
+      sed -i "s/cluster_name: default.*/cluster_name: default+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i 's#image: "rayproject/ray-ml:latest"#image: "harbor-repo.vmware.com/dockerhub-proxy-cache/rayproject/ray-ml:latest"#g' python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/name: frozen-vm.*/name: frozen-vm-1/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s&#    ssh_private_key: /path/to/your/key.pem&    ssh_private_key: ~/ray-bootstrap-key.pem&g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/pull_before_run: True/pull_before_run: False/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#       credentials:/        credentials:/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           user: vc_username/            user: ${VSPHERE_USER}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           password: vc_password/            password: ${VSPHERE_PASSWORD}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           server: vc_address/            server: ${VSPHERE_SERVER}/g" python/ray/autoscaler/vsphere/example-full.yaml
+  script:
+    - |
+      cat python/ray/autoscaler/vsphere/example-full.yaml
+      bash --login -i -c "
+        ray down -y python/ray/autoscaler/vsphere/example-full.yaml
+      "
   allow_failure: true
+  environment:
+    name: ray-cluster-by-pipeline/${CI_COMMIT_REF_SLUG}-${CI_PIPELINE_ID}
+    action: stop
+  when: always
   only:
     - merge_requests
