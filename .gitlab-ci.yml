@@ -70,6 +70,7 @@ lint_clang-format:
         ./ci/lint/check-git-clang-format-output.sh 
       "
   allow_failure: true
+  needs: []
   only:
     - merge_requests
 
@@ -85,6 +86,7 @@ lint_code-format:
         FORMAT_SH_PRINT_DIFF=1 ./ci/lint/format.sh --all-scripts
       "
   allow_failure: false
+  needs: []
   only:
     - merge_requests
 
@@ -100,6 +102,7 @@ lint_untested-code-snippet:
         semgrep ci --config semgrep.yml
       "
   allow_failure: true
+  needs: []
   only:
     - merge_requests
 
@@ -114,6 +117,7 @@ lint_banned-words:
         ./ci/lint/check-banned-words.sh 
       "
   allow_failure: false
+  needs: []
   only:
     - merge_requests
 
@@ -129,6 +133,7 @@ lint_doc-readme:
         cd python && python setup.py check --restructuredtext --strict --metadata
       "
   allow_failure: false
+  needs: []
   only:
     - merge_requests
 
@@ -155,6 +160,7 @@ lint_copyright-format:
         ./ci/lint/copyright-format.sh -c
       "
   allow_failure: false
+  needs: []
   only:
     - merge_requests
 
@@ -170,6 +176,7 @@ lint_bazel-team:
         bazel query 'kind("py_test", //...)' --output=xml | python ./ci/lint/check-bazel-team-owner.py
       "
   allow_failure: false
+  needs: []
   only:
     - merge_requests
 
@@ -184,6 +191,7 @@ lint_bazel-buildifier:
         ./ci/lint/check-bazel-buildifier.sh
       "
   allow_failure: true
+  needs: []
   only:
     - merge_requests
 
@@ -199,6 +207,7 @@ lint_pytest-format:
         ./ci/lint/check-pytest-format.sh
       "
   allow_failure: true
+  needs: []
   only:
     - merge_requests
 
@@ -213,6 +222,7 @@ lint_test-coverage:
         python ci/pipeline/check-test-run.py
       "
   allow_failure: true
+  needs: []
   only:
     - merge_requests
 
@@ -247,6 +257,7 @@ unit-test_LinkCheck:
         ./ci/ci.sh check_sphinx_links
       "
   allow_failure: true
+  needs: []
   only:
     - merge_requests
 
@@ -265,6 +276,7 @@ unit-test_Tune-soft-imports-test:
         bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=soft_imports python/ray/tune/...
       "
   allow_failure: true
+  needs: []
   only:
     - merge_requests
 
@@ -281,6 +293,7 @@ pytest-test_basic:
         python -m pytest -v -s python/ray/tests/test_basic.py
       "
   allow_failure: true
+  needs: []
   only:
     - merge_requests
 
@@ -297,6 +310,7 @@ pytest-test_vsphere:
         python -m pytest -v -s python/ray/tests/vsphere
       "
   allow_failure: false
+  needs: []
   only:
     - merge_requests
 
@@ -336,6 +350,7 @@ deploy-ray:
         ray up -y python/ray/autoscaler/vsphere/example-full.yaml
       "
   allow_failure: false
+  needs: []
   environment:
     name: ray-cluster-by-pipeline/${CI_COMMIT_REF_SLUG}-${CI_PIPELINE_ID}
     action: start
@@ -378,6 +393,7 @@ functionality-ray-test:
         ray exec python/ray/autoscaler/vsphere/example-full.yaml 'python -c \"import ray; ray.init()\"'
       "
   allow_failure: false
+  needs: ["deploy-ray"]
   environment:
     name: ray-cluster-by-pipeline/${CI_COMMIT_REF_SLUG}-${CI_PIPELINE_ID}
     action: access
@@ -420,6 +436,7 @@ delete-ray:
         ray down -y python/ray/autoscaler/vsphere/example-full.yaml
       "
   allow_failure: true
+  needs: ["functionality-ray-test"]
   environment:
     name: ray-cluster-by-pipeline/${CI_COMMIT_REF_SLUG}-${CI_PIPELINE_ID}
     action: stop
