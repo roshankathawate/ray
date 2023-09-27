@@ -47,7 +47,30 @@ class PyvmomiSdkProvider:
             raise ValueError("Could not connect to the specified host")
         atexit.register(Disconnect, self.pyvmomi_sdk_client)
 
-    def get_pyvmomi_obj(self, vimtype, name):
+    def get_pyvmomi_obj_by_moid(self, vimtype, moid):
+        obj = None
+        if self.pyvmomi_sdk_client is None:
+            raise ValueError("Must init pyvmomi_sdk_client first.")
+
+        container = self.pyvmomi_sdk_client.content.viewManager.CreateContainerView(
+            self.pyvmomi_sdk_client.content.rootFolder, vimtype, True
+        )
+
+        for c in container.view:
+            if moid:
+                if moid in str(c):
+                    obj = c
+                    break
+            else:
+                obj = c
+                break
+        if not obj:
+            raise RuntimeError(
+                f"Unexpected: cannot find vSphere object {vimtype} with moid: {moid}"
+            )
+        return obj
+
+    def get_pyvmomi_obj_by_name(self, vimtype, name):
         """
         This function finds the vSphere object by the object name and the object type.
         The object type can be "VM", "Host", "Datastore", etc.

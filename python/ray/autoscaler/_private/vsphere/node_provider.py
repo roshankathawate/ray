@@ -1,5 +1,4 @@
 import copy
-import ipaddress
 import logging
 import threading
 import time
@@ -23,7 +22,7 @@ from pyVmomi import vim
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.autoscaler._private.vsphere.config import bootstrap_vsphere
 from ray.autoscaler._private.vsphere.sdk_provider import VmwSdkProviderFactory
-from ray.autoscaler._private.vsphere.utils import Constants
+from ray.autoscaler._private.vsphere.utils import Constants, is_ipv4
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 
@@ -85,7 +84,7 @@ class VsphereNodeProvider(NodeProvider):
         self.cached_nodes: Dict[str, VM] = {}
 
     def check_frozen_vm_status(self, frozen_vm_name):
-        vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+        vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
             [vim.VirtualMachine], frozen_vm_name
         )
         if vm is None:
@@ -181,19 +180,14 @@ class VsphereNodeProvider(NodeProvider):
             return dict(d1)
 
     def external_ip(self, node_id):
-        # Return the external IP of the VM
-
-        vm = self.vsphere_sdk_client.vcenter.vm.guest.Identity.get(node_id)
-        try:
-            _ = ipaddress.IPv4Address(vm.ip_address)
-            logger.debug("Fetch IP {} for VM {}".format(vm.ip_address, vm))
-        except ipaddress.AddressValueError:
-            # vSphere SDK could return IPv6 address when the VM is just booted. We
-            # just return None in this case because the Ray doesn't support IPv6
-            # address yet When the next time external_ip is called, we could return
-            # the IPv4 address
-            return None
-        return vm.ip_address
+        vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_moid(
+            [vim.VirtualMachine], node_id
+        )
+        for ipaddr in vm.guest.net[0].ipAddress:
+            if is_ipv4(ipaddr):
+                logger.debug("Fetch IP {} for VM {}".format(ipaddr, vm))
+                return ipaddr
+        return None
 
     def internal_ip(self, node_id):
         # Currently vSphere VMs do not show an internal IP. So we just return the
@@ -336,7 +330,7 @@ class VsphereNodeProvider(NodeProvider):
                 break
 
     def get_frozen_vm_obj(self):
-        vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+        vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
             [vim.VirtualMachine], self.frozen_vm_name
         )
         return vm
@@ -372,7 +366,7 @@ class VsphereNodeProvider(NodeProvider):
         # If resource pool is not provided in the config yaml, then the resource pool
         # of the frozen VM will also be the resource pool of the new VM.
         resource_pool = (
-            self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+            self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
                 [vim.ResourcePool], node_config["resource_pool"]
             )
             if "resource_pool" in node_config and node_config["resource_pool"]
@@ -381,7 +375,7 @@ class VsphereNodeProvider(NodeProvider):
         # If datastore is not provided in the config yaml, then the datastore
         # of the frozen VM will also be the resource pool of the new VM.
         datastore = (
-            self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+            self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
                 [vim.Datastore], node_config["datastore"]
             )
             if "datastore" in node_config and node_config["datastore"]
@@ -406,7 +400,7 @@ class VsphereNodeProvider(NodeProvider):
         threading.Thread(target=self.tag_vm, args=(vm_name_target, tags)).start()
         WaitForTask(parent_vm.InstantClone_Task(spec=instant_clone_spec))
 
-        cloned_vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+        cloned_vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
             [vim.VirtualMachine], vm_name_target
         )
 
@@ -436,7 +430,7 @@ class VsphereNodeProvider(NodeProvider):
         exception_happened = False
         vm_names = []
 
-        res_pool = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+        res_pool = self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
             [vim.ResourcePool], node_config["frozen_vm"]["resource_pool"]
         )
         cluster = res_pool.parent.parent
@@ -492,7 +486,7 @@ class VsphereNodeProvider(NodeProvider):
                 "The datastore name must be provided when deploying frozen"
                 "VM from OVF"
             )
-        datastore_mo = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+        datastore_mo = self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
             [vim.Datastore], datastore_name
         )
         if not datastore_mo:
@@ -520,7 +514,7 @@ class VsphereNodeProvider(NodeProvider):
                     "The cluster name must be provided when deploying a single frozen"
                     " VM from OVF"
                 )
-            cluster_mo = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+            cluster_mo = self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
                 [vim.ClusterComputeResource], cluster_name
             )
             if not cluster_mo:
@@ -613,7 +607,9 @@ class VsphereNodeProvider(NodeProvider):
 
         # Get the created vm object
         vm = self.get_vm(result.resource_id.id)
-        vm_mo = self.pyvmomi_sdk_provider.get_pyvmomi_obj([vim.VirtualMachine], vm.name)
+        vm_mo = self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
+            [vim.VirtualMachine], vm.name
+        )
         if wait_until_frozen:
             self.wait_until_vm_is_frozen(vm_mo)
 
@@ -653,8 +649,10 @@ class VsphereNodeProvider(NodeProvider):
             if "schedule_policy" in self.vsphere_config
             else ""
         )
-        self.frozen_vms_resource_pool = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
-            [vim.ResourcePool], self.frozen_vm_resource_pool_name
+        self.frozen_vms_resource_pool = (
+            self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
+                [vim.ResourcePool], self.frozen_vm_resource_pool_name
+            )
         )
 
         if self.frozen_vms_resource_pool is None:
