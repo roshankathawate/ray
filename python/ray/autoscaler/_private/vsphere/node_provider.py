@@ -89,7 +89,7 @@ class VsphereNodeProvider(NodeProvider):
         existing and in the frozen state. If the frozen VM is existing and off, this
         function will also help to power on the frozen VM and wait until it is frozen.
         """
-        vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+        vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
             [vim.VirtualMachine], frozen_vm_name
         )
         if vm is None:
