@@ -49,6 +49,60 @@ def bootstrap_vsphere(config):
     return config
 
 
+def validate_frozen_vm_configs(conf: dict):
+    """
+    valid frozen VM configs are:
+    1. ``ray up`` on a frozen VM to be deployed from an OVF template:
+    frozen_vm:
+        name: single-frozen-vm
+        library_item: frozen-vm-template
+        cluster: vsanCluster
+        datastore: vsanDatastore
+
+    2. ``ray up`` on an existing frozen VM:
+        frozen_vm:
+            name: existing-single-frozen-vm
+
+    3. ``ray up`` on a resource pool of frozen VMs to be deployed from an OVF template:
+        frozen_vm:
+            name: frozen-vm-prefix
+            library_item: frozen-vm-template
+            resource_pool: frozen-vm-resource-pool
+            datastore: vsanDatastore
+
+    4. ``ray up`` on an existing resource pool of frozen VMs:
+        frozen_vm:
+            resource_pool: frozen-vm-resource-pool
+    This function will throw an Exception if the config doesn't lie in above examples
+    """
+    # This means deploy from OVF
+    if conf.get("library_item"):
+        # Deploy to which datastore must be given
+        if not conf.get("datastore"):
+            raise ValueError(
+                "'datastore' is not given when trying to deploy the frozen VM from OVF."
+            )
+        # Either give a cluster, or a resource_pool. cluster means deploy one frozen VM
+        # resource_pool means deploy a set of frozen VMs
+        if not (conf.get("cluster") or conf.get("resource_pool")):
+            raise ValueError(
+                "both 'cluster' and 'resource_pool' are missing when trying to deploy"
+                " the frozen VM from OVF, at least one should be given."
+            )
+        # name must exist when deploy from OVF
+        if not conf.get("name"):
+            raise ValueError(
+                "'name' must be given when deploying the frozen VM from OVF."
+            )
+    else:
+        # If frozen VM(s) exist(s), then just check if name or resource pool presents
+        if not ("name" in conf or "resource_pool" in conf):
+            raise ValueError(
+                "both 'name' and 'resource_pool' are missing, at least one should be "
+                "given for the frozen VM(s)."
+            )
+
+
 def check_and_update_frozen_vm_configs_in_provider_section(
     config, head_node_config, worker_node_config
 ):
@@ -69,6 +123,8 @@ def check_and_update_frozen_vm_configs_in_provider_section(
     # the code will create VMs on each host of the cluster that's specified.
     # Each frozen VM name will start with value in the 'name' field. All the
     # frozen VMs will be moved into the 'resource_pool' specified.
+
+    validate_frozen_vm_configs(vsphere_config["frozen_vm"])
 
     head_node_config["frozen_vm"] = vsphere_config["frozen_vm"]
 
@@ -91,7 +147,6 @@ def check_and_update_frozen_vm_configs_in_provider_section(
 
 
 def add_credentials_into_provider_section(config):
-
     provider_config = config["provider"]
 
     # vsphere_config is an optional field as the credentials can also be specified
@@ -170,7 +225,6 @@ def update_vsphere_configs(config):
 
 
 def create_key_pair():
-
     # If the files already exists, we don't want to create new keys.
     # This if condition will currently pass even if there are invalid keys
     # in those path. TODO: Only return if the keys are valid.
@@ -203,7 +257,6 @@ def create_key_pair():
 
 
 def configure_key_pair(config):
-
     logger.info("Configure key pairs for copying into the head node.")
 
     assert os.path.exists(
