@@ -24,6 +24,7 @@ stages:          # List of stages for jobs, and their order of execution
   - functionality_tests-environment-deploy
   - functionality_tests
   - functionality_tests-environment-delete
+  - deploy
 
 variables:
   CI_BASE_IMAGE: $PROD_URL/ray_taiga_cicd/oss-ci-base_test
@@ -50,7 +51,7 @@ ci_env_docker_build:
     - docker pull $CI_BASE_IMAGE || true
     - docker pull $CI_TEST_IMAGE || true
     - docker build -t $CI_BASE_IMAGE --cache-from $CI_BASE_IMAGE -f ./ci/docker/base.test.Dockerfile .
-    - sed -i '18s/SKIP_BAZEL_BUILD=1 RAY_INSTALL_JAVA=0 //' ./ci/docker/test.Dockerfile
+    - sed -i '18d' ./ci/docker/test.Dockerfile
     - docker build --build-arg DOCKER_IMAGE_BASE_TEST=$CI_BASE_IMAGE -t $CI_TEST_IMAGE --cache-from $CI_TEST_IMAGE -f ./ci/docker/test.Dockerfile .
     - docker push $CI_BASE_IMAGE
     - docker push $CI_TEST_IMAGE
@@ -241,9 +242,6 @@ lint_test-coverage:
 #   only:
 #     - merge_requests
 
-
-
-
 # Convert from .buildkite/pipeline.test.yml "LinkCheck"
 unit-test_LinkCheck:
   stage: unit-test
@@ -266,13 +264,16 @@ unit-test_Tune-soft-imports-test:
   stage: unit-test
   image: 
     name: "$CI_TEST_IMAGE"
+
   script: 
     - | 
       bash --login -i -c "
         cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
         # no TUNE_TESTING=1 on purpose
         ./ci/env/install-dependencies.sh
-       ./ci/env/env_info.sh
+        ./ci/env/env_info.sh
+        pip install -U $RAY_WHL
+        python python/ray/setup-dev.py -y
         bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=soft_imports python/ray/tune/...
       "
   allow_failure: true
@@ -284,12 +285,15 @@ pytest-test_basic:
   stage: vsphere_extension_tests
   image:
     name: "$CI_TEST_IMAGE"
+  before_script:
+    - |
+      bash --login -i -c "
+        pip install -U $RAY_WHL
+        python python/ray/setup-dev.py -y
+      "
   script:
     - |
       bash --login -i -c "
-        pip uninstall -y ray
-        pip install -U $RAY_WHL
-        python python/ray/setup-dev.py -y
         python -m pytest -v -s python/ray/tests/test_basic.py
       "
   allow_failure: true
@@ -301,12 +305,15 @@ pytest-test_vsphere:
   stage: vsphere_extension_tests
   image:
     name: "$CI_TEST_IMAGE"
+  before_script:
+    - |
+      bash --login -i -c "
+        pip install -U $RAY_WHL
+        python python/ray/setup-dev.py -y
+      "
   script:
     - |
       bash --login -i -c "
-        pip uninstall -y ray
-        pip install -U $RAY_WHL
-        python python/ray/setup-dev.py -y
         python -m pytest -v -s python/ray/tests/vsphere
       "
   allow_failure: false
@@ -330,12 +337,11 @@ deploy-ray:
       cp key/ray_bootstrap_public_key.key ~/ray_bootstrap_public_key.key
       chmod 0600 ~/ray-bootstrap-key.pem
       bash --login -i -c "
-        pip uninstall -y ray
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py -y
       "
       sed -i "s/cluster_name: default.*/cluster_name: default+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
-      sed -i 's#image: "rayproject/ray-ml:latest"#image: "harbor-repo.vmware.com/dockerhub-proxy-cache/rayproject/ray-ml:latest"#g' python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i 's#image: "rayproject/ray-ml:latest"#image: "harbor-repo.vmware.com/dockerhub-proxy-cache/rayproject/ray:nightly"#g' python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/name: frozen-vm.*/name: frozen-vm-1/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s&#    ssh_private_key: /path/to/your/key.pem&    ssh_private_key: ~/ray-bootstrap-key.pem&g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/pull_before_run: True/pull_before_run: False/g" python/ray/autoscaler/vsphere/example-full.yaml
@@ -343,6 +349,7 @@ deploy-ray:
       sed -i "s/#           user: vc_username/            user: ${VSPHERE_USER}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/#           password: vc_password/            password: ${VSPHERE_PASSWORD}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/#           server: vc_address/            server: ${VSPHERE_SERVER}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
   script:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
@@ -373,12 +380,11 @@ functionality-ray-test:
       cp key/ray_bootstrap_public_key.key ~/ray_bootstrap_public_key.key
       chmod 0600 ~/ray-bootstrap-key.pem
       bash --login -i -c "
-        pip uninstall -y ray
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py -y
       "
       sed -i "s/cluster_name: default.*/cluster_name: default+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
-      sed -i 's#image: "rayproject/ray-ml:latest"#image: "harbor-repo.vmware.com/dockerhub-proxy-cache/rayproject/ray-ml:latest"#g' python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i 's#image: "rayproject/ray-ml:latest"#image: "harbor-repo.vmware.com/dockerhub-proxy-cache/rayproject/ray:nightly"#g' python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/name: frozen-vm.*/name: frozen-vm-1/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s&#    ssh_private_key: /path/to/your/key.pem&    ssh_private_key: ~/ray-bootstrap-key.pem&g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/pull_before_run: True/pull_before_run: False/g" python/ray/autoscaler/vsphere/example-full.yaml
@@ -386,6 +392,7 @@ functionality-ray-test:
       sed -i "s/#           user: vc_username/            user: ${VSPHERE_USER}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/#           password: vc_password/            password: ${VSPHERE_PASSWORD}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/#           server: vc_address/            server: ${VSPHERE_SERVER}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
   script:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
@@ -416,12 +423,11 @@ delete-ray:
       cp key/ray_bootstrap_public_key.key ~/ray_bootstrap_public_key.key
       chmod 0600 ~/ray-bootstrap-key.pem
       bash --login -i -c "
-        pip uninstall -y ray
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py -y
       "
       sed -i "s/cluster_name: default.*/cluster_name: default+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
-      sed -i 's#image: "rayproject/ray-ml:latest"#image: "harbor-repo.vmware.com/dockerhub-proxy-cache/rayproject/ray-ml:latest"#g' python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i 's#image: "rayproject/ray-ml:latest"#image: "harbor-repo.vmware.com/dockerhub-proxy-cache/rayproject/ray:nightly"#g' python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/name: frozen-vm.*/name: frozen-vm-1/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s&#    ssh_private_key: /path/to/your/key.pem&    ssh_private_key: ~/ray-bootstrap-key.pem&g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/pull_before_run: True/pull_before_run: False/g" python/ray/autoscaler/vsphere/example-full.yaml
@@ -429,6 +435,7 @@ delete-ray:
       sed -i "s/#           user: vc_username/            user: ${VSPHERE_USER}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/#           password: vc_password/            password: ${VSPHERE_PASSWORD}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/#           server: vc_address/            server: ${VSPHERE_SERVER}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
   script:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
@@ -443,3 +450,47 @@ delete-ray:
   when: always
   only:
     - merge_requests
+
+deploy-dev-ray:
+  stage: deploy
+  image:
+    name: "$CI_TEST_IMAGE"
+  variables:
+    VSPHERE_SERVER: "$DEV_CPU_VSPHERE_SERVER"
+    VSPHERE_USER: "$DEV_CPU_VSPHERE_USER"
+    VSPHERE_PASSWORD: "$DEV_CPU_VSPHERE_PASSWORD"
+    SECURE_FILES_DOWNLOAD_PATH: "key/"
+  before_script:
+    - |
+      curl -s https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer | bash
+      cp key/ray-bootstrap-key.pem ~/ray-bootstrap-key.pem
+      cp key/ray_bootstrap_public_key.key ~/ray_bootstrap_public_key.key
+      chmod 0600 ~/ray-bootstrap-key.pem
+      bash --login -i -c "
+        pip install -U $RAY_WHL
+        python python/ray/setup-dev.py -y
+      "
+      sed -i "s/cluster_name: default.*/cluster_name: branch-dev/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i 's#image: "rayproject/ray-ml:latest"#image: "harbor-repo.vmware.com/dockerhub-proxy-cache/rayproject/ray:nightly"#g' python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/name: frozen-vm.*/name: frozen-vm-1/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s&#    ssh_private_key: /path/to/your/key.pem&    ssh_private_key: ~/ray-bootstrap-key.pem&g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/pull_before_run: True/pull_before_run: False/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#       credentials:/        credentials:/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           user: vc_username/            user: ${VSPHERE_USER}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           password: vc_password/            password: ${VSPHERE_PASSWORD}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           server: vc_address/            server: ${VSPHERE_SERVER}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
+  script:
+    - |
+      cat python/ray/autoscaler/vsphere/example-full.yaml
+      bash --login -i -c "
+        ray up -y python/ray/autoscaler/vsphere/example-full.yaml
+        ray exec python/ray/autoscaler/vsphere/example-full.yaml 'python -c \"import ray; ray.init()\"'
+      "
+  allow_failure: false
+  needs: []
+  environment:
+    name: dev
+    action: start
+  only:
+    - dev
