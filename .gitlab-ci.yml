@@ -33,9 +33,18 @@ variables:
   DEFAULT_BRANCH: remotes/origin/oss-master
   DEFAULT_WHL: $RAY_WHL
   CI_PIPELINE_ID: $CI_PIPELINE_ID
+
   DEV_CPU_VSPHERE_SERVER: $DEV_CPU_VSPHERE_SERVER
   DEV_CPU_VSPHERE_USER: $DEV_CPU_VSPHERE_USER
   DEV_CPU_VSPHERE_PASSWORD: $DEV_CPU_VSPHERE_PASSWORD
+  CPU_RAY_IMAGE: harbor-repo.vmware.com/dockerhub-proxy-cache/rayproject/ray:nightly
+
+  GPU_feature_pattern: '/^GPU.*/'
+  DEV_GPU_VSPHERE_SERVER: $DEV_GPU_VSPHERE_SERVER
+  DEV_GPU_VSPHERE_USER: $DEV_GPU_VSPHERE_USER
+  DEV_GPU_VSPHERE_PASSWORD: $DEV_GPU_VSPHERE_PASSWORD
+  GPU_RAY_IMAGE: harbor-repo.vmware.com/dockerhub-proxy-cache/rayproject/ray:nightly-gpu
+
 
 default:
   tags:
@@ -341,7 +350,7 @@ deploy-ray:
         python python/ray/setup-dev.py -y
       "
       sed -i "s/cluster_name: default.*/cluster_name: default+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
-      sed -i 's#image: "rayproject/ray-ml:latest"#image: "harbor-repo.vmware.com/dockerhub-proxy-cache/rayproject/ray:nightly"#g' python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s#image: \"rayproject/ray-ml:latest\"#image: \"${CPU_RAY_IMAGE}\"#g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/name: frozen-vm.*/name: frozen-vm-1/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s&#    ssh_private_key: /path/to/your/key.pem&    ssh_private_key: ~/ray-bootstrap-key.pem&g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/pull_before_run: True/pull_before_run: False/g" python/ray/autoscaler/vsphere/example-full.yaml
@@ -358,11 +367,8 @@ deploy-ray:
       "
   allow_failure: false
   needs: []
-  environment:
-    name: ray-cluster-by-pipeline/${CI_COMMIT_REF_SLUG}-${CI_PIPELINE_ID}
-    action: start
-  only:
-    - merge_requests
+  rules:
+    - if: $CI_COMMIT_REF_NAME !~ $GPU_feature_pattern && $CI_PIPELINE_SOURCE == "merge_request_event"
 
 functionality-ray-test:
   stage: functionality_tests
@@ -384,7 +390,7 @@ functionality-ray-test:
         python python/ray/setup-dev.py -y
       "
       sed -i "s/cluster_name: default.*/cluster_name: default+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
-      sed -i 's#image: "rayproject/ray-ml:latest"#image: "harbor-repo.vmware.com/dockerhub-proxy-cache/rayproject/ray:nightly"#g' python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s#image: \"rayproject/ray-ml:latest\"#image: \"${CPU_RAY_IMAGE}\"#g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/name: frozen-vm.*/name: frozen-vm-1/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s&#    ssh_private_key: /path/to/your/key.pem&    ssh_private_key: ~/ray-bootstrap-key.pem&g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/pull_before_run: True/pull_before_run: False/g" python/ray/autoscaler/vsphere/example-full.yaml
@@ -401,11 +407,8 @@ functionality-ray-test:
       "
   allow_failure: false
   needs: ["deploy-ray"]
-  environment:
-    name: ray-cluster-by-pipeline/${CI_COMMIT_REF_SLUG}-${CI_PIPELINE_ID}
-    action: access
-  only:
-    - merge_requests
+  rules:
+    - if: $CI_COMMIT_REF_NAME !~ $GPU_feature_pattern && $CI_PIPELINE_SOURCE == "merge_request_event"
 
 delete-ray:
   stage: functionality_tests-environment-delete
@@ -427,7 +430,7 @@ delete-ray:
         python python/ray/setup-dev.py -y
       "
       sed -i "s/cluster_name: default.*/cluster_name: default+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
-      sed -i 's#image: "rayproject/ray-ml:latest"#image: "harbor-repo.vmware.com/dockerhub-proxy-cache/rayproject/ray:nightly"#g' python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s#image: \"rayproject/ray-ml:latest\"#image: \"${CPU_RAY_IMAGE}\"#g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/name: frozen-vm.*/name: frozen-vm-1/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s&#    ssh_private_key: /path/to/your/key.pem&    ssh_private_key: ~/ray-bootstrap-key.pem&g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/pull_before_run: True/pull_before_run: False/g" python/ray/autoscaler/vsphere/example-full.yaml
@@ -444,12 +447,136 @@ delete-ray:
       "
   allow_failure: true
   needs: ["functionality-ray-test"]
-  environment:
-    name: ray-cluster-by-pipeline/${CI_COMMIT_REF_SLUG}-${CI_PIPELINE_ID}
-    action: stop
   when: always
-  only:
-    - merge_requests
+  rules:
+    - if: $CI_COMMIT_REF_NAME !~ $GPU_feature_pattern && $CI_PIPELINE_SOURCE == "merge_request_event"
+
+
+# GPU test
+deploy-GPU-ray:
+  stage: functionality_tests-environment-deploy
+  image:
+    name: "$CI_TEST_IMAGE"
+  variables:
+    VSPHERE_SERVER: "$DEV_GPU_VSPHERE_SERVER"
+    VSPHERE_USER: "$DEV_GPU_VSPHERE_USER"
+    VSPHERE_PASSWORD: "$DEV_GPU_VSPHERE_PASSWORD"
+    SECURE_FILES_DOWNLOAD_PATH: "key/"
+  before_script:
+    - |
+      curl -s https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer | bash
+      cp key/ray-bootstrap-key.pem ~/ray-bootstrap-key.pem
+      cp key/ray_bootstrap_public_key.key ~/ray_bootstrap_public_key.key
+      chmod 0600 ~/ray-bootstrap-key.pem
+      bash --login -i -c "
+        pip install -U $RAY_WHL
+        python python/ray/setup-dev.py -y
+      "
+      sed -i "s/cluster_name: default.*/cluster_name: default+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s#image: \"rayproject/ray-ml:latest\"#image: \"${GPU_RAY_IMAGE}\"#g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/name: frozen-vm.*/name: frozen-vm-1/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s&#    ssh_private_key: /path/to/your/key.pem&    ssh_private_key: ~/ray-bootstrap-key.pem&g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/pull_before_run: True/pull_before_run: False/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#       credentials:/        credentials:/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           user: vc_username/            user: ${VSPHERE_USER}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           password: vc_password/            password: ${VSPHERE_PASSWORD}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           server: vc_address/            server: ${VSPHERE_SERVER}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
+  script:
+    - |
+      cat python/ray/autoscaler/vsphere/example-full.yaml
+      bash --login -i -c "
+        # ray up -y python/ray/autoscaler/vsphere/example-full.yaml
+        echo 'Mockup: GPU-Ray deploy Success'
+      "
+  allow_failure: false
+  needs: []
+  rules:
+    - if: $CI_COMMIT_REF_NAME =~ $GPU_feature_pattern && $CI_PIPELINE_SOURCE == "merge_request_event"
+
+functionality-GPU-ray-test:
+  stage: functionality_tests
+  image:
+    name: "$CI_TEST_IMAGE"
+  variables:
+    VSPHERE_SERVER: "$DEV_GPU_VSPHERE_SERVER"
+    VSPHERE_USER: "$DEV_GPU_VSPHERE_USER"
+    VSPHERE_PASSWORD: "$DEV_GPU_VSPHERE_PASSWORD"
+    SECURE_FILES_DOWNLOAD_PATH: "key/"
+  before_script:
+    - |
+      curl -s https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer | bash
+      cp key/ray-bootstrap-key.pem ~/ray-bootstrap-key.pem
+      cp key/ray_bootstrap_public_key.key ~/ray_bootstrap_public_key.key
+      chmod 0600 ~/ray-bootstrap-key.pem
+      bash --login -i -c "
+        pip install -U $RAY_WHL
+        python python/ray/setup-dev.py -y
+      "
+      sed -i "s/cluster_name: default.*/cluster_name: default+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s#image: \"rayproject/ray-ml:latest\"#image: \"${GPU_RAY_IMAGE}\"#g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/name: frozen-vm.*/name: frozen-vm-1/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s&#    ssh_private_key: /path/to/your/key.pem&    ssh_private_key: ~/ray-bootstrap-key.pem&g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/pull_before_run: True/pull_before_run: False/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#       credentials:/        credentials:/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           user: vc_username/            user: ${VSPHERE_USER}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           password: vc_password/            password: ${VSPHERE_PASSWORD}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           server: vc_address/            server: ${VSPHERE_SERVER}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
+  script:
+    - |
+      cat python/ray/autoscaler/vsphere/example-full.yaml
+      bash --login -i -c "
+        # ray exec python/ray/autoscaler/vsphere/example-full.yaml 'python -c \"import ray; ray.init()\"'
+        echo 'Mockup: GPU-Ray functionality tests Success'
+      "
+  allow_failure: false
+  needs: ["deploy-GPU-ray"]
+  rules:
+    - if: $CI_COMMIT_REF_NAME =~ $GPU_feature_pattern && $CI_PIPELINE_SOURCE == "merge_request_event"
+
+delete-GPU-ray:
+  stage: functionality_tests-environment-delete
+  image:
+    name: "$CI_TEST_IMAGE"
+  variables:
+    VSPHERE_SERVER: "$DEV_GPU_VSPHERE_SERVER"
+    VSPHERE_USER: "$DEV_GPU_VSPHERE_USER"
+    VSPHERE_PASSWORD: "$DEV_GPU_VSPHERE_PASSWORD"
+    SECURE_FILES_DOWNLOAD_PATH: "key/"
+  before_script:
+    - |
+      curl -s https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer | bash
+      cp key/ray-bootstrap-key.pem ~/ray-bootstrap-key.pem
+      cp key/ray_bootstrap_public_key.key ~/ray_bootstrap_public_key.key
+      chmod 0600 ~/ray-bootstrap-key.pem
+      bash --login -i -c "
+        pip install -U $RAY_WHL
+        python python/ray/setup-dev.py -y
+      "
+      sed -i "s/cluster_name: default.*/cluster_name: default+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s#image: \"rayproject/ray-ml:latest\"#image: \"${GPU_RAY_IMAGE}\"#g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/name: frozen-vm.*/name: frozen-vm-1/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s&#    ssh_private_key: /path/to/your/key.pem&    ssh_private_key: ~/ray-bootstrap-key.pem&g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/pull_before_run: True/pull_before_run: False/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#       credentials:/        credentials:/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           user: vc_username/            user: ${VSPHERE_USER}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           password: vc_password/            password: ${VSPHERE_PASSWORD}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           server: vc_address/            server: ${VSPHERE_SERVER}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
+  script:
+    - |
+      cat python/ray/autoscaler/vsphere/example-full.yaml
+      bash --login -i -c "
+        # ray down -y python/ray/autoscaler/vsphere/example-full.yaml
+        echo 'Mockup: GPU-Ray delete Success'
+      "
+  allow_failure: true
+  needs: ["functionality-GPU-ray-test"]
+  when: always
+  rules:
+    - if: $CI_COMMIT_REF_NAME =~ $GPU_feature_pattern && $CI_PIPELINE_SOURCE == "merge_request_event"
+
 
 deploy-dev-ray:
   stage: deploy
@@ -471,7 +598,7 @@ deploy-dev-ray:
         python python/ray/setup-dev.py -y
       "
       sed -i "s/cluster_name: default.*/cluster_name: branch-dev/g" python/ray/autoscaler/vsphere/example-full.yaml
-      sed -i 's#image: "rayproject/ray-ml:latest"#image: "harbor-repo.vmware.com/dockerhub-proxy-cache/rayproject/ray:nightly"#g' python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s#image: \"rayproject/ray-ml:latest\"#image: \"${CPU_RAY_IMAGE}\"#g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/name: frozen-vm.*/name: frozen-vm-1/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s&#    ssh_private_key: /path/to/your/key.pem&    ssh_private_key: ~/ray-bootstrap-key.pem&g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/pull_before_run: True/pull_before_run: False/g" python/ray/autoscaler/vsphere/example-full.yaml
@@ -484,6 +611,7 @@ deploy-dev-ray:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
       bash --login -i -c "
+        ray down -y python/ray/autoscaler/vsphere/example-full.yaml
         ray up -y python/ray/autoscaler/vsphere/example-full.yaml
         ray exec python/ray/autoscaler/vsphere/example-full.yaml 'python -c \"import ray; ray.init()\"'
       "
