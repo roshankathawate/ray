@@ -21,7 +21,10 @@ from pyVmomi import vim
 
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.autoscaler._private.vsphere.config import bootstrap_vsphere
-from ray.autoscaler._private.vsphere.sdk_provider import VmwSdkProviderFactory
+from ray.autoscaler._private.vsphere.sdk_provider import (
+    ClientType,
+    VmwSdkProviderFactory,
+)
 from ray.autoscaler._private.vsphere.utils import Constants, is_ipv4
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
@@ -62,14 +65,14 @@ class VsphereNodeProvider(NodeProvider):
             vsphere_credentials["server"],
             vsphere_credentials["user"],
             vsphere_credentials["password"],
-            VmwSdkProviderFactory.ClientType.AUTOMATION_SDK,
+            ClientType.AUTOMATION_SDK,
         ).sdk_provider
         self.vsphere_sdk_client = self.vsphere_sdk_provider.vsphere_sdk_client
         self.pyvmomi_sdk_provider = VmwSdkProviderFactory(
             vsphere_credentials["server"],
             vsphere_credentials["user"],
             vsphere_credentials["password"],
-            VmwSdkProviderFactory.ClientType.PYVMOMI_SDK,
+            ClientType.PYVMOMI_SDK,
         ).sdk_provider
 
         # Tags that we believe to actually be on VM.
