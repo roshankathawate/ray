@@ -8,33 +8,63 @@ from ray.autoscaler._private.vsphere.sdk_provider import ClientType, get_sdk_pro
 logger = logging.getLogger(__name__)
 
 
-def is_this_gpu_avail_on_this_host(host, gpu):
-    for hardware in host.config.assignableHardwareBinding:
-        if gpu.pciId in hardware.instanceId and hardware.vm is not None:
-            return False
-    return True
-
-
-def is_any_gpu_avail_on_this_host(host, gpus):
+def get_gpu_id_if_available(host, gpu):
+    """
+    This function checks if a GPU is availble on an ESXi host, if yes,
+    returns the GPU ID of the GPU. Otherwise returns none.
+    Or return None
+    """
+    bindings = host.config.assignableHardwareBinding
     # No VM bind to any GPU card on this host
-    if not host.config.assignableHardwareBinding:
-        return True
+    if not bindings:
+        return gpu.pciId
+
+    for hardware in bindings:
+        # There is a VM bind to this GPU card
+        if gpu.pciId in hardware.instanceId and hardware.vm:
+            logger.warning(f"GPU {gpu.pciId} is used by VM {hardware.vm.name}")
+            return None
+    # No VM bind to this GPU card
+    return gpu.pciId
+
+
+def get_gpu_ids(host, gpus, desired_gpu_number):
+    """
+    This function takes the number of desired GPU and all the GPU cards of a host.
+    This function will selected the unused GPU cards' GPU IDs and put them into a list.
+    If the lenght of the list > the number of the desired GPU, return the list,
+    otherwise return None to indicate that this host cannot fulfill the GPU requirement.
+    """
+    gpu_ids = []
 
     for gpu in gpus:
         # Find one avaialable GPU card on this host
-        if is_this_gpu_avail_on_this_host(host, gpu):
-            return True
+        gpu_id = get_gpu_id_if_available(host, gpu)
+        if gpu_id:
+            gpu_ids.append(gpu_id)
+
+    if len(gpu_ids) < desired_gpu_number:
+        logger.warning(
+            f"No enough unused GPU cards on host {host.name}, "
+            f"expected number {desired_gpu_number}, only {len(gpu_ids)}, "
+            f"gpu_ids {gpu_ids}"
+        )
+        return None
 
     # Find no GPU card on this host
-    return False
+    return gpu_ids
 
 
-def get_supported_gpus_on_this_host(host):
+def get_supported_gpus(host):
+    """
+    This function returns all the supported GPUs on this host,
+    currently "supported" means Nvidia GPU.
+    """
     gpus = []
-    # Does this host has GPU card
+    # This host has no GPU card, return empty array
     if host.config.graphicsInfo is None:
         return gpus
-
+    # Currently, only support nvidia GPU
     for gpu in host.config.graphicsInfo:
         if "nvidia" in gpu.vendorName.lower():
             gpus.append(gpu)
@@ -42,39 +72,80 @@ def get_supported_gpus_on_this_host(host):
     return gpus
 
 
-def get_gpu_frozen_vm_list(frozen_vm_pool_name):
+def get_vm_2_gpu_ids_map(pool_name, desired_gpu_number):
+    """
+    This function return "vm, gpu_ids" map, the key represents the VM
+    and he value represents the available GPUs this VM can bind.
+    The value will only exist if the length of the value >= desired_gpu_number.
+    """
+    result = {}
     pyvmomi_sdk_provider = get_sdk_provider(ClientType.PYVMOMI_SDK)
-    frozen_vm_pool = pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
-        [vim.ResourcePool], frozen_vm_pool_name
-    )
-    gpu_frozen_vms = []
-    if not frozen_vm_pool.vm:
-        return gpu_frozen_vms
+    pool = pyvmomi_sdk_provider.get_pyvmomi_obj_by_name([vim.ResourcePool], pool_name)
+    if not pool.vm:
+        logger.error(f"No frozen-vm in pool {pool.name}")
+        return result
 
-    host_gpu_avail_status = {}
-    for vm in frozen_vm_pool.vm:
+    for vm in pool.vm:
         host = vm.runtime.host
-        if host.name in host_gpu_avail_status:
-            if host_gpu_avail_status[host.name]:
-                gpu_frozen_vms.append(vm)
+
+        # Get all gpu cards from this host
+        gpus = get_supported_gpus(host)
+        if len(gpus) < desired_gpu_number:
+            # This is for debug purpose
+            # To get all supported GPU cards' GPU IDs
+            gpu_ids = []
+            for gpu in gpus:
+                gpu_ids.append(gpu.pciId)
+            logger.warning(
+                f"No enough supported GPU cards on host {host.name}, "
+                f"expected number {desired_gpu_number}, only {len(gpus)}, "
+                f"gpu_ids {gpu_ids}"
+            )
             continue
 
-        gpus = get_supported_gpus_on_this_host(host)
+        # Get all available gpu cards to see if it satify the number
+        gpu_ids = get_gpu_ids(host, gpus, desired_gpu_number)
+        if gpu_ids:
+            logger.info(f"Got Frozen VM {vm.name}, Host {host.name}, GPU ids {gpu_ids}")
+            result[vm.name] = gpu_ids
 
-        if not is_any_gpu_avail_on_this_host(host, gpus):
-            host_gpu_avail_status[host.name] = False
-            continue
-        else:
-            host_gpu_avail_status[host.name] = True
-
-        gpu_frozen_vms.append(vm)
-
-    return gpu_frozen_vms
+    if not result:
+        logger.error(f"No enough unused GPU cards for any VMs of pool {pool.name}")
+    return result
 
 
-def is_any_gpu_avail_for_this_vm(vm):
-    gpus = get_supported_gpus_on_this_host(vm.runtime.host)
-    return is_any_gpu_avail_on_this_host(vm.runtime.host, gpus)
+def get_gpu_ids_from_vm(vm, desired_gpu_number):
+    """
+    This function will be called when there is only one single frozen VM.
+    It returns gpu_ids if enough GPUs are available for this VM,
+    Or return None.
+    """
+    gpus = get_supported_gpus(vm.runtime.host)
+    if len(gpus) < desired_gpu_number:
+        # This is for debug purpose
+        # To get all supported GPU cards' GPU IDs
+        gpu_ids = []
+        for gpu in gpus:
+            gpu_ids.append(gpu.pciId)
+        logger.warning(
+            f"No enough supported GPU cards "
+            f"for VM {vm.name} on host {vm.runtime.host.name}, "
+            f"expected number {desired_gpu_number}, only {len(gpus)}, "
+            f"gpu_ids {gpu_ids}"
+        )
+        return None
+
+    gpu_ids = get_gpu_ids(vm.runtime.host, gpus, desired_gpu_number)
+    if gpu_ids:
+        logger.info(
+            f"Got Frozen VM {vm.name}, Host {vm.runtime.host.name}, GPU ids {gpu_ids}"
+        )
+    else:
+        logger.warning(
+            f"No enough unused GPU cards "
+            f"for VM {vm.name} on host {vm.runtime.host.name}"
+        )
+    return gpu_ids
 
 
 def add_gpus_to_vm(vm_name: str, gpu_ids: list):

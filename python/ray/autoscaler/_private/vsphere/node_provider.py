@@ -21,6 +21,10 @@ from pyVmomi import vim
 
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.autoscaler._private.vsphere.config import bootstrap_vsphere
+from ray.autoscaler._private.vsphere.gpu_utils import (
+    get_gpu_ids_from_vm,
+    get_vm_2_gpu_ids_map,
+)
 from ray.autoscaler._private.vsphere.sdk_provider import (
     ClientType,
     VmwSdkProviderFactory,
@@ -403,11 +407,32 @@ class VsphereNodeProvider(NodeProvider):
 
         # If there is only one frozen VM then the caller of create_instant_clone_node
         # will pass a frozen VM obj has the source_vm. If there is a resource pool of
-        # frozen VMs, then the source_vm passed by the caller will be None. That is why
-        # we need to call self.choose_frozen_vm_obj to get a frozen VM obj.
-        parent_vm = source_vm if source_vm else self.choose_frozen_vm_obj()
+        # frozen VMs, then the source_vm passed by the caller will be None.
+        if "GPU" in resources:
+            # if source_vm exists, then it means we have one single frozen VM.
+            if source_vm:
+                gpu_ids = get_gpu_ids_from_vm(source_vm, resources["GPU"])
+                if not gpu_ids:
+                    raise ValueError("No available GPU card")
+                logger.debug("gpu_ids={}".format(gpu_ids))
+                parent_vm = source_vm
+            else:
+                vm_2_gpu_ids_map = get_vm_2_gpu_ids_map(
+                    node_config["frozen_vm"]["resource_pool"], resources["GPU"]
+                )
+                logger.debug("vm_2_gpu_ids_map={}".format(vm_2_gpu_ids_map))
+                if not vm_2_gpu_ids_map:
+                    raise ValueError("No available GPU card or frozen VM")
+                for vm_name in vm_2_gpu_ids_map:
+                    parent_vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
+                        [vim.VirtualMachine], vm_name
+                    )
+                    break
+        else:
+            # This is none-GPU node
+            parent_vm = source_vm if source_vm else self.choose_frozen_vm_obj()
 
-        logger.debug("parent_vm={}".format(parent_vm))
+        logger.debug("parent_vm={}".format(parent_vm.name))
 
         tags[Constants.VSPHERE_NODE_STATUS] = Constants.VsphereNodeStatus.CREATING.value
         threading.Thread(target=self.tag_vm, args=(vm_name_target, tags)).start()
