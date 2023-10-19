@@ -172,6 +172,10 @@ def add_gpus_to_vm(vm_name: str, gpu_ids: list):
 
     # PCI passthru device requires the memory to be hard reserved.
     config_spec.memoryReservationLockedToMax = True
+    # https://kb.vmware.com/s/article/89638
+    # Due to above known issue, we need to disable the cpu hot add for Ray nodes.
+    # This will have no impact on our feature.
+    config_spec.cpuHotAddEnabled = False
 
     # add the GPUs into the reconfigure spec.
     config_spec.deviceChange = []

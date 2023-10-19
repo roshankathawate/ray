@@ -22,6 +22,7 @@ from pyVmomi import vim
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.autoscaler._private.vsphere.config import bootstrap_vsphere
 from ray.autoscaler._private.vsphere.gpu_utils import (
+    add_gpus_to_vm,
     get_gpu_ids_from_vm,
     get_vm_2_gpu_ids_map,
 )
@@ -405,20 +406,27 @@ class VsphereNodeProvider(NodeProvider):
 
         logger.debug("source_vm={}".format(source_vm))
 
+        to_be_plugged_gpu = []
+        parent_vm = None
+
         # If there is only one frozen VM then the caller of create_instant_clone_node
         # will pass a frozen VM obj has the source_vm. If there is a resource pool of
         # frozen VMs, then the source_vm passed by the caller will be None.
-        if "GPU" in resources:
+        requested_gpu_num = resources.get("GPU", 0)
+        if requested_gpu_num > 0:
             # if source_vm exists, then it means we have one single frozen VM.
             if source_vm:
-                gpu_ids = get_gpu_ids_from_vm(source_vm, resources["GPU"])
+                gpu_ids = get_gpu_ids_from_vm(source_vm, requested_gpu_num)
                 if not gpu_ids:
                     raise ValueError("No available GPU card")
                 logger.debug("gpu_ids={}".format(gpu_ids))
                 parent_vm = source_vm
+                # The length of the gpu_ids must be larger than requested_gpu_num
+                to_be_plugged_gpu = gpu_ids[:requested_gpu_num]
             else:
+                # We have mutil frozen VM
                 vm_2_gpu_ids_map = get_vm_2_gpu_ids_map(
-                    node_config["frozen_vm"]["resource_pool"], resources["GPU"]
+                    node_config["frozen_vm"]["resource_pool"], requested_gpu_num
                 )
                 logger.debug("vm_2_gpu_ids_map={}".format(vm_2_gpu_ids_map))
                 if not vm_2_gpu_ids_map:
@@ -428,6 +436,7 @@ class VsphereNodeProvider(NodeProvider):
                         [vim.VirtualMachine], vm_name
                     )
                     break
+                to_be_plugged_gpu = vm_2_gpu_ids_map[parent_vm.name][:requested_gpu_num]
         else:
             # This is none-GPU node
             parent_vm = source_vm if source_vm else self.choose_frozen_vm_obj()
@@ -461,6 +470,9 @@ class VsphereNodeProvider(NodeProvider):
             self.vsphere_sdk_client.vcenter.vm.hardware.Memory.update(
                 vm_id, update_spec
             )
+
+        if to_be_plugged_gpu:
+            add_gpus_to_vm(cloned_vm.name, to_be_plugged_gpu)
 
         return vm
 
