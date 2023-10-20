@@ -25,6 +25,7 @@ from ray.autoscaler._private.vsphere.gpu_utils import (
     add_gpus_to_vm,
     get_gpu_ids_from_vm,
     get_vm_2_gpu_ids_map,
+    split_vm_2_gpu_ids_map,
 )
 from ray.autoscaler._private.vsphere.sdk_provider import (
     ClientType,
@@ -376,7 +377,9 @@ class VsphereNodeProvider(NodeProvider):
 
         raise RuntimeError("VM {} could not be found.".format(vm_name))
 
-    def create_instant_clone_node(self, source_vm, vm_name_target, node_config, tags):
+    def create_instant_clone_node(
+        self, source_vm, vm_name_target, node_config, tags, gpu_ids_map
+    ):
         # If resource pool is not provided in the config yaml, then the resource pool
         # of the frozen VM will also be the resource pool of the new VM.
         resource_pool = (
@@ -409,36 +412,19 @@ class VsphereNodeProvider(NodeProvider):
         to_be_plugged_gpu = []
         parent_vm = None
 
-        # If there is only one frozen VM then the caller of create_instant_clone_node
-        # will pass a frozen VM obj has the source_vm. If there is a resource pool of
-        # frozen VMs, then the source_vm passed by the caller will be None.
         requested_gpu_num = resources.get("GPU", 0)
         if requested_gpu_num > 0:
-            # if source_vm exists, then it means we have one single frozen VM.
-            if source_vm:
-                gpu_ids = get_gpu_ids_from_vm(source_vm, requested_gpu_num)
-                if not gpu_ids:
-                    raise ValueError("No available GPU card")
-                logger.debug("gpu_ids={}".format(gpu_ids))
-                parent_vm = source_vm
-                # The length of the gpu_ids must be larger than requested_gpu_num
-                to_be_plugged_gpu = gpu_ids[:requested_gpu_num]
-            else:
-                # We have mutil frozen VM
-                vm_2_gpu_ids_map = get_vm_2_gpu_ids_map(
-                    node_config["frozen_vm"]["resource_pool"], requested_gpu_num
+            for vm_name in gpu_ids_map:
+                parent_vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
+                    [vim.VirtualMachine], vm_name
                 )
-                logger.debug("vm_2_gpu_ids_map={}".format(vm_2_gpu_ids_map))
-                if not vm_2_gpu_ids_map:
-                    raise ValueError("No available GPU card or frozen VM")
-                for vm_name in vm_2_gpu_ids_map:
-                    parent_vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
-                        [vim.VirtualMachine], vm_name
-                    )
-                    break
-                to_be_plugged_gpu = vm_2_gpu_ids_map[parent_vm.name][:requested_gpu_num]
+                to_be_plugged_gpu = gpu_ids_map[vm_name]
+                break
         else:
-            # This is none-GPU node
+            # If there is only one frozen VM then the caller of
+            # create_instant_clone_node will pass a frozen VM obj has the
+            # source_vm. If there is a resource pool of frozen VMs,
+            # then the source_vm passed by the caller will be None.
             parent_vm = source_vm if source_vm else self.choose_frozen_vm_obj()
 
         logger.debug("parent_vm={}".format(parent_vm.name))
@@ -787,6 +773,34 @@ class VsphereNodeProvider(NodeProvider):
             for _ in range(count)
         ]
 
+        requested_gpu_num = 0
+        if "resources" in node_config:
+            resources = node_config["resources"]
+            requested_gpu_num = resources.get("GPU", 0)
+        vm_2_gpu_ids_map = {}
+        gpu_ids_map_array = []
+
+        if requested_gpu_num > 0:
+            # Fetch all availble frozen-vm + gpu-ids info into `vm_2_gpu_ids_map``
+            if "resource_pool" in node_config["frozen_vm"]:
+                vm_2_gpu_ids_map = get_vm_2_gpu_ids_map(
+                    node_config["frozen_vm"]["resource_pool"], requested_gpu_num
+                )
+            else:
+                gpu_ids = get_gpu_ids_from_vm(frozen_vm_obj, requested_gpu_num)
+                vm_2_gpu_ids_map[frozen_vm_obj.name] = gpu_ids
+
+            # Split `vm_2_gpu_ids_map` for nodes
+            gpu_ids_map_array = split_vm_2_gpu_ids_map(
+                vm_2_gpu_ids_map, requested_gpu_num, count
+            )
+            if not gpu_ids_map_array:
+                raise ValueError("No enough available GPU cards for all nodes")
+        else:
+            # Aviod invalid index when accessing gpu_ids_map_array[i]
+            for i in range(count):
+                gpu_ids_map_array.append(None)
+
         with ThreadPoolExecutor(max_workers=count) as executor:
             futures = [
                 executor.submit(
@@ -795,6 +809,7 @@ class VsphereNodeProvider(NodeProvider):
                     vm_names[i],
                     node_config,
                     tags,
+                    gpu_ids_map_array[i],
                 )
                 for i in range(count)
             ]

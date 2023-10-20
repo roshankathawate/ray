@@ -114,6 +114,74 @@ def get_vm_2_gpu_ids_map(pool_name, desired_gpu_number):
     return result
 
 
+def split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num, node_number):
+    """
+    This function split the `vm, all_gpu_ids` map into array of
+    "vm, gpu_ids_with_requested_gpu_num" map.
+
+    Parameters:
+        vm_2_gpu_ids_map: It is `vm, all_gpu_ids` map, and you can get it by call
+                          function `get_vm_2_gpu_ids_map`.
+        requested_gpu_num: The number of GPU cards is requested by each ray node.
+        node_number: The number of ray nodes
+
+    Returns:
+        Array of "vm, gpu_ids_with_requested_gpu_num" map.
+        Each element of this array will be used in one ray node.
+
+    Example:
+        We have 3 hosts, `host1`, `host2`, and `host3`
+        Each host has 1 frozen vm, `frozen-vm-1`, `frozen-vm-2`, and `frozen-vm-3`.
+        `host1` has 3 GPU cards, `0000:3b:00.0`, `0000:3b:00.1`,`0000:3b:00.2`
+        `host2` has 2 GPU cards, `0000:3b:00.3`,`0000:3b:00.4`
+        `host3` has 1 GPU card, `0000:3b:00.5`
+        And we provison a ray cluster with 3 nodes, each node need 1 GPU card
+
+        In this case,  vm_2_gpu_ids_map is like this:
+        {
+            'frozen-vm-1': ['0000:3b:00.0', '0000:3b:00.1', '0000:3b:00.2'],
+            'frozen-vm-2': ['0000:3b:00.3', '0000:3b:00.4'],
+            'frozen-vm-3': ['0000:3b:00.5'],
+        }
+        requested_gpu_num is 1, and node_number is 3.
+
+        After call the bove with this funtion, it returns this array:
+        [
+            { 'frozen-vm-1' : ['0000:3b:00.0'] },
+            { 'frozen-vm-1' : ['0000:3b:00.1'] },
+            { 'frozen-vm-1' : ['0000:3b:00.2'] },
+            { 'frozen-vm-2' : ['0000:3b:00.3'] },
+            { 'frozen-vm-2' : ['0000:3b:00.4'] },
+            { 'frozen-vm-3' : ['0000:3b:00.5'] },
+        ]
+
+        Each element of this array could be used in 1 ray node with exactly
+        `requested_gpu_num` GPU, no more, no less.
+    """
+    gpu_ids_map_array = []
+    for vm_name in vm_2_gpu_ids_map:
+        gpu_ids = vm_2_gpu_ids_map[vm_name]
+        i = 0
+        j = requested_gpu_num
+        while j <= len(gpu_ids):
+            gpu_ids_maps = {vm_name: gpu_ids[i:j]}
+            gpu_ids_map_array.append(gpu_ids_maps)
+            i = j
+            j = i + requested_gpu_num
+
+    # When there are not enough gpu cards for all ray nodes
+    if len(gpu_ids_map_array) < node_number:
+        logger.error(
+            f"No enough available GPU cards to assigned to nodes "
+            f"expected enough for {node_number} nodes, "
+            f"only enough for {len(gpu_ids_map_array)} nodes, "
+            f"gpu_ids_map_array {gpu_ids_map_array}"
+        )
+        return []
+
+    return gpu_ids_map_array
+
+
 def get_gpu_ids_from_vm(vm, desired_gpu_number):
     """
     This function will be called when there is only one single frozen VM.
