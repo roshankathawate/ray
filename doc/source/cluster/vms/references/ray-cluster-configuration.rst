@@ -1473,6 +1473,14 @@ A list of commands to run to set up worker nodes of this type. These commands wi
         * **Importance:** High
         * **Type:** Integer
 
+    .. tab-item:: vSphere
+
+        The number of GPUs made available by this node.
+
+        * **Required:** No
+        * **Importance:** High
+        * **Type:** Integer
+
 .. _cluster-configuration-memory:
 
 ``available_node_types.<node_type_name>.node_type.resources.memory``
@@ -1509,7 +1517,7 @@ A list of commands to run to set up worker nodes of this type. These commands wi
 
     .. tab-item:: vSphere
 
-        The memory in bytes allocated for python worker heap memory on the node.
+        The memory in megabytes allocated for python worker heap memory on the node.
         If not configured, the node will use the same memory settings as the frozen VM.
 
         * **Required:** No
