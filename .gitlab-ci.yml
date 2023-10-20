@@ -275,14 +275,14 @@ unit-test_Tune-soft-imports-test:
     name: "$CI_TEST_IMAGE"
 
   script: 
-    - | 
+    - |
       bash --login -i -c "
         cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
         # no TUNE_TESTING=1 on purpose
         ./ci/env/install-dependencies.sh
         ./ci/env/env_info.sh
         pip install -U $RAY_WHL
-        python python/ray/setup-dev.py -y
+        python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
         bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=soft_imports python/ray/tune/...
       "
   allow_failure: true
@@ -298,7 +298,7 @@ pytest-test_basic:
     - |
       bash --login -i -c "
         pip install -U $RAY_WHL
-        python python/ray/setup-dev.py -y
+        python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
   script:
     - |
@@ -318,7 +318,7 @@ pytest-test_vsphere:
     - |
       bash --login -i -c "
         pip install -U $RAY_WHL
-        python python/ray/setup-dev.py -y
+        python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
   script:
     - |
@@ -347,7 +347,7 @@ deploy-ray:
       chmod 0600 ~/ray-bootstrap-key.pem
       bash --login -i -c "
         pip install -U $RAY_WHL
-        python python/ray/setup-dev.py -y
+        python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
       sed -i "s/cluster_name: default.*/cluster_name: default+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s#image: \"rayproject/ray-ml:latest\"#image: \"${CPU_RAY_IMAGE}\"#g" python/ray/autoscaler/vsphere/example-full.yaml
@@ -387,7 +387,7 @@ functionality-ray-test:
       chmod 0600 ~/ray-bootstrap-key.pem
       bash --login -i -c "
         pip install -U $RAY_WHL
-        python python/ray/setup-dev.py -y
+        python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
       sed -i "s/cluster_name: default.*/cluster_name: default+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s#image: \"rayproject/ray-ml:latest\"#image: \"${CPU_RAY_IMAGE}\"#g" python/ray/autoscaler/vsphere/example-full.yaml
@@ -427,7 +427,7 @@ delete-ray:
       chmod 0600 ~/ray-bootstrap-key.pem
       bash --login -i -c "
         pip install -U $RAY_WHL
-        python python/ray/setup-dev.py -y
+        python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
       sed -i "s/cluster_name: default.*/cluster_name: default+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s#image: \"rayproject/ray-ml:latest\"#image: \"${CPU_RAY_IMAGE}\"#g" python/ray/autoscaler/vsphere/example-full.yaml
@@ -470,7 +470,7 @@ deploy-GPU-ray:
       chmod 0600 ~/ray-bootstrap-key.pem
       bash --login -i -c "
         pip install -U $RAY_WHL
-        python python/ray/setup-dev.py -y
+        python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
       sed -i "s/cluster_name: default.*/cluster_name: default+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s#image: \"rayproject/ray-ml:latest\"#image: \"${GPU_RAY_IMAGE}\"#g" python/ray/autoscaler/vsphere/example-full.yaml
@@ -511,7 +511,7 @@ functionality-GPU-ray-test:
       chmod 0600 ~/ray-bootstrap-key.pem
       bash --login -i -c "
         pip install -U $RAY_WHL
-        python python/ray/setup-dev.py -y
+        python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
       sed -i "s/cluster_name: default.*/cluster_name: default+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s#image: \"rayproject/ray-ml:latest\"#image: \"${GPU_RAY_IMAGE}\"#g" python/ray/autoscaler/vsphere/example-full.yaml
@@ -552,7 +552,7 @@ delete-GPU-ray:
       chmod 0600 ~/ray-bootstrap-key.pem
       bash --login -i -c "
         pip install -U $RAY_WHL
-        python python/ray/setup-dev.py -y
+        python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
       sed -i "s/cluster_name: default.*/cluster_name: default+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s#image: \"rayproject/ray-ml:latest\"#image: \"${GPU_RAY_IMAGE}\"#g" python/ray/autoscaler/vsphere/example-full.yaml
@@ -595,7 +595,7 @@ deploy-dev-ray:
       chmod 0600 ~/ray-bootstrap-key.pem
       bash --login -i -c "
         pip install -U $RAY_WHL
-        python python/ray/setup-dev.py -y
+        python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
       sed -i "s/cluster_name: default.*/cluster_name: branch-dev/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s#image: \"rayproject/ray-ml:latest\"#image: \"${CPU_RAY_IMAGE}\"#g" python/ray/autoscaler/vsphere/example-full.yaml
