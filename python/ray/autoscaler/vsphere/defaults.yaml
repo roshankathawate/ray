@@ -79,7 +79,7 @@ available_node_types:
         # The node type's CPU and Memory resources are by default the same as the frozen VM.
         # You can override the resources here. Adding GPU to the head node is not recommended.
         # resources: { "CPU": 2, "Memory": 4096}
-        resources: {}
+        resources: {"CPU": 2}
         node_config:
             # The resource pool where the head node should live, if unset, will be
             # the frozen VM's resource pool.
@@ -97,7 +97,7 @@ available_node_types:
         # minimum number. The vSphere node provider will not distinguish the GPU type. It will just count the quantity:
         # mount the first k random available Nvidia GPU to the VM, if the user set {"GPU": k}.
         # resources: {"CPU": 2, "Memory": 4096, "GPU": 1}
-        resources: {}
+        resources: {"CPU": 2}
         node_config:
             # The resource pool where the worker node should live, if unset, will be
             # the frozen VM's resource pool.
