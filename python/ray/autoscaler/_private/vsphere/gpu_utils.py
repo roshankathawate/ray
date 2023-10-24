@@ -49,7 +49,7 @@ def get_gpu_ids(host, gpus, desired_gpu_number):
             f"expected number {desired_gpu_number}, only {len(gpu_ids)}, "
             f"gpu_ids {gpu_ids}"
         )
-        return None
+        return []
 
     # Find no GPU card on this host
     return gpu_ids
@@ -201,7 +201,7 @@ def get_gpu_ids_from_vm(vm, desired_gpu_number):
             f"expected number {desired_gpu_number}, only {len(gpus)}, "
             f"gpu_ids {gpu_ids}"
         )
-        return None
+        return []
 
     gpu_ids = get_gpu_ids(vm.runtime.host, gpus, desired_gpu_number)
     if gpu_ids:
@@ -228,7 +228,9 @@ def add_gpus_to_vm(vm_name: str, gpu_ids: list):
     # The VM is supposed to be at powered on status after instant clone.
     # We need to power it off.
     if vm_obj.runtime.powerState == vim.VirtualMachinePowerState.poweredOn:
+        logger.debug(f"Power off VM {vm_name}...")
         WaitForTask(vm_obj.PowerOffVM_Task())
+        logger.debug(f"VM {vm_name} is power off. Done.")
 
     config_spec = vim.vm.ConfigSpec()
 
@@ -265,6 +267,7 @@ def add_gpus_to_vm(vm_name: str, gpu_ids: list):
     # vim.vm.device.VirtualDevice.html
     key = -100
     for gpu_id in gpu_ids:
+        logger.info(f"Plugin GPU card {gpu_id} into VM {vm_name}")
         pci_passthru_info = id_to_pci_passthru_info[gpu_id]
         backing = vim.VirtualPCIPassthroughDeviceBackingInfo(
             # This hex trick is what we must do to construct a backing info.
@@ -285,4 +288,6 @@ def add_gpus_to_vm(vm_name: str, gpu_ids: list):
         key += 1
 
     WaitForTask(vm_obj.ReconfigVM_Task(spec=config_spec))
+    logger.debug(f"Power on VM {vm_name}...")
     WaitForTask(vm_obj.PowerOnVM_Task())
+    logger.debug(f"VM {vm_name} is power on. Done.")
