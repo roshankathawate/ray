@@ -363,7 +363,7 @@ deploy-ray:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
       bash --login -i -c "
-        ray up -y python/ray/autoscaler/vsphere/example-full.yaml
+        ray up -y python/ray/autoscaler/vsphere/example-full.yaml --no-config-cache
       "
   allow_failure: false
   needs: []
@@ -486,7 +486,7 @@ deploy-GPU-ray:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
       bash --login -i -c "
-        # ray up -y python/ray/autoscaler/vsphere/example-full.yaml
+        # ray up -y python/ray/autoscaler/vsphere/example-full.yaml --no-config-cache
         echo 'Mockup: GPU-Ray deploy Success'
       "
   allow_failure: false
@@ -612,7 +612,7 @@ deploy-dev-ray:
       cat python/ray/autoscaler/vsphere/example-full.yaml
       bash --login -i -c "
         ray down -y python/ray/autoscaler/vsphere/example-full.yaml
-        ray up -y python/ray/autoscaler/vsphere/example-full.yaml
+        ray up -y python/ray/autoscaler/vsphere/example-full.yaml --no-config-cache
         ray exec python/ray/autoscaler/vsphere/example-full.yaml 'python -c \"import ray; ray.init()\"'
       "
   allow_failure: false
