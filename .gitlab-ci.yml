@@ -486,7 +486,7 @@ deploy-GPU-ray:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
       bash --login -i -c "
-        # ray up -y python/ray/autoscaler/vsphere/example-full.yaml --no-config-cach
+        # ray up -y python/ray/autoscaler/vsphere/example-full.yaml --no-config-cache
         echo 'Mockup: GPU-Ray deploy Success'
       "
   allow_failure: false
