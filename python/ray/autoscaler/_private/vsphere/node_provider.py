@@ -194,10 +194,14 @@ class VsphereNodeProvider(NodeProvider):
         vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
             [vim.VirtualMachine], obj_id=node_id
         )
-        for ipaddr in vm.guest.net[0].ipAddress:
-            if is_ipv4(ipaddr):
-                logger.debug("Fetch IP {} for VM {}".format(ipaddr, vm))
-                return ipaddr
+        if vm.guest.net:
+            for ipaddr in vm.guest.net[0].ipAddress:
+                if is_ipv4(ipaddr):
+                    logger.debug("Fetch IP {} for VM {}".format(ipaddr, vm.name))
+                    return ipaddr
+        else:
+            logger.warning("VM Net is not ready")
+        logger.warning("External IPv4 address is not available")
         return None
 
     def internal_ip(self, node_id):
@@ -403,8 +407,6 @@ class VsphereNodeProvider(NodeProvider):
             name=vm_name_target, location=vm_relocate_spec
         )
 
-        logger.debug("source_vm={}".format(source_vm))
-
         to_be_plugged_gpu = []
         parent_vm = None
 
@@ -423,11 +425,10 @@ class VsphereNodeProvider(NodeProvider):
             # then the source_vm passed by the caller will be None.
             parent_vm = source_vm if source_vm else self.choose_frozen_vm_obj()
 
-        logger.debug("parent_vm={}".format(parent_vm.name))
-
         tags[Constants.VSPHERE_NODE_STATUS] = Constants.VsphereNodeStatus.CREATING.value
         threading.Thread(target=self.tag_vm, args=(vm_name_target, tags)).start()
         WaitForTask(parent_vm.InstantClone_Task(spec=instant_clone_spec))
+        logger.info(f"Clone VM {vm_name_target} from Frozen-VM {parent_vm.name}")
 
         cloned_vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
             [vim.VirtualMachine], vm_name_target
@@ -441,14 +442,17 @@ class VsphereNodeProvider(NodeProvider):
         if "CPU" in resources:
             # Update number of CPUs
             update_spec = Cpu.UpdateSpec(count=resources["CPU"])
-            logger.debug("vm.hardware.Cpu.update({}, {})".format(vm_id, update_spec))
+            logger.debug(
+                "vm.hardware.Cpu.update({}, {})".format(cloned_vm.name, update_spec)
+            )
             self.vsphere_sdk_client.vcenter.vm.hardware.Cpu.update(vm_id, update_spec)
 
         if "Memory" in resources:
             # Update Memory
             update_spec = Memory.UpdateSpec(size_mib=resources["Memory"])
-
-            logger.debug("vm.hardware.Memory.update({}, {})".format(vm_id, update_spec))
+            logger.debug(
+                "vm.hardware.Memory.update({}, {})".format(cloned_vm.name, update_spec)
+            )
             self.vsphere_sdk_client.vcenter.vm.hardware.Memory.update(
                 vm_id, update_spec
             )
@@ -655,7 +659,7 @@ class VsphereNodeProvider(NodeProvider):
             if status.state != HardPower.State.POWERED_OFF:
                 self.vsphere_sdk_client.vcenter.vm.Power.stop(vm_id)
 
-            logger.info("Deleting VM {}".format(vm_id))
+            logger.info("Deleting VM {}".format(vm_name))
             self.vsphere_sdk_client.vcenter.VM.delete(vm_id)
 
     def wait_until_vm_is_frozen(self, vm):
@@ -666,10 +670,12 @@ class VsphereNodeProvider(NodeProvider):
         while time.time() - start < Constants.VM_FREEZE_TIMEOUT:
             time.sleep(Constants.VM_FREEZE_SLEEP_TIME)
             if vm.runtime.instantCloneFrozen:
-                logger.info("VM {} went into frozen state successfully.".format(vm))
+                logger.info(
+                    "VM {} went into frozen state successfully.".format(vm.name)
+                )
                 return
 
-        raise RuntimeError("VM {} didn't go into frozen state".format(vm))
+        raise RuntimeError("VM {} didn't go into frozen state".format(vm.name))
 
     def initialize_frozen_vm_scheduler(self, frozen_vm_config):
         self.frozen_vm_resource_pool_name = frozen_vm_config["resource_pool"]
@@ -775,9 +781,9 @@ class VsphereNodeProvider(NodeProvider):
             if not gpu_ids_map_array:
                 raise ValueError("No enough available GPU cards for all nodes")
         else:
-            # Aviod invalid index when accessing gpu_ids_map_array[i]
+            # CPU node: Avoid invalid index when accessing gpu_ids_map_array[i]
             for i in range(count):
-                gpu_ids_map_array.append(None)
+                gpu_ids_map_array.append([])
 
         with ThreadPoolExecutor(max_workers=count) as executor:
             futures = [
