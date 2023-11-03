@@ -444,7 +444,9 @@ functionality-ray-resource-validity:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
       bash --login -i -c "
-        ray exec python/ray/autoscaler/vsphere/example-full.yaml 'python ci/ray_ci/test_resource_validity.py 12 12288'
+        ray rsync-up -A python/ray/autoscaler/vsphere/example-full.yaml ./ci/ray_ci/test_resource_validity.py ./ci/ray_ci/test_resource_validity.py &&
+        ray rsync-up -A python/ray/autoscaler/vsphere/example-full.yaml ~/ray-bootstrap-key.pem ~/ray-bootstrap-key.pem &&
+        ray exec python/ray/autoscaler/vsphere/example-full.yaml 'python ./ci/ray_ci/test_resource_validity.py 12 12288'
       "
   allow_failure: false
   needs: ["deploy-ray"]
@@ -487,7 +489,7 @@ delete-ray:
         ray down -y python/ray/autoscaler/vsphere/example-full.yaml
       "
   allow_failure: true
-  needs: ["deploy-ray"]
+  needs: ["deploy-ray", "functionality-ray-accessibility", "functionality-ray-resource-validity"]
   when: always
   rules:
     - if: $CI_COMMIT_REF_NAME !~ $GPU_feature_pattern && $CI_PIPELINE_SOURCE == "merge_request_event"
