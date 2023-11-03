@@ -45,7 +45,7 @@ def run_ssh_command(host, command):
     )
 
     # Read the standard output and error of the subprocess
-    return ssh.communicate()[0].splitlines()[0].decpde("utf-8")
+    return ssh.communicate()[0].splitlines()[0].decode("utf-8")
 
 
 def get_resource_by_node(node):
