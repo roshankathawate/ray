@@ -19,8 +19,8 @@
 stages:          # List of stages for jobs, and their order of execution
   - build_base_image
   - lint
-  - unit-test
-  - vsphere_extension_tests
+  - compiled-check
+  - vsphere_extension_unit_tests
   - functionality_tests-environment-deploy
   - functionality_tests
   - functionality_tests-environment-delete
@@ -253,7 +253,7 @@ lint_test-coverage:
 
 # Convert from .buildkite/pipeline.test.yml "LinkCheck"
 unit-test_LinkCheck:
-  stage: unit-test
+  stage: compiled-check
   image: 
     name: "$CI_TEST_IMAGE"
   script: 
@@ -270,7 +270,7 @@ unit-test_LinkCheck:
 
 # Convert from .buildkite/pipeline.test.yml "Tune soft imports test"
 unit-test_Tune-soft-imports-test:
-  stage: unit-test
+  stage: compiled-check
   image: 
     name: "$CI_TEST_IMAGE"
 
@@ -291,7 +291,7 @@ unit-test_Tune-soft-imports-test:
     - merge_requests
 
 pytest-test_basic:
-  stage: vsphere_extension_tests
+  stage: vsphere_extension_unit_tests
   image:
     name: "$CI_TEST_IMAGE"
   before_script:
@@ -311,7 +311,7 @@ pytest-test_basic:
     - merge_requests
 
 pytest-test_vsphere:
-  stage: vsphere_extension_tests
+  stage: vsphere_extension_unit_tests
   image:
     name: "$CI_TEST_IMAGE"
   before_script:
@@ -370,7 +370,7 @@ deploy-ray:
   rules:
     - if: $CI_COMMIT_REF_NAME !~ $GPU_feature_pattern && $CI_PIPELINE_SOURCE == "merge_request_event"
 
-functionality-ray-test:
+functionality-ray-accessibility:
   stage: functionality_tests
   image:
     name: "$CI_TEST_IMAGE"
@@ -403,7 +403,48 @@ functionality-ray-test:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
       bash --login -i -c "
-        ray exec python/ray/autoscaler/vsphere/example-full.yaml 'python -c \"import ray; ray.init()\"'
+        ray exec python/ray/autoscaler/vsphere/example-full.yaml 'python -c \"import ray; ray.init() \"'
+      "
+  allow_failure: false
+  needs: ["deploy-ray"]
+  rules:
+    - if: $CI_COMMIT_REF_NAME !~ $GPU_feature_pattern && $CI_PIPELINE_SOURCE == "merge_request_event"
+
+
+functionality-ray-resource-validity:
+  stage: functionality_tests
+  image:
+    name: "$CI_TEST_IMAGE"
+  variables:
+    VSPHERE_SERVER: "$DEV_CPU_VSPHERE_SERVER"
+    VSPHERE_USER: "$DEV_CPU_VSPHERE_USER"
+    VSPHERE_PASSWORD: "$DEV_CPU_VSPHERE_PASSWORD"
+    SECURE_FILES_DOWNLOAD_PATH: "key/"
+  before_script:
+    - |
+      curl -s https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer | bash
+      cp key/ray-bootstrap-key.pem ~/ray-bootstrap-key.pem
+      cp key/ray_bootstrap_public_key.key ~/ray_bootstrap_public_key.key
+      chmod 0600 ~/ray-bootstrap-key.pem
+      bash --login -i -c "
+        pip install -U $RAY_WHL
+        python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
+      "
+      sed -i "s/cluster_name: default.*/cluster_name: default+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s#image: \"rayproject/ray-ml:latest\"#image: \"${CPU_RAY_IMAGE}\"#g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/name: frozen-vm.*/name: frozen-vm-1/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s&#    ssh_private_key: /path/to/your/key.pem&    ssh_private_key: ~/ray-bootstrap-key.pem&g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/pull_before_run: True/pull_before_run: False/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#       credentials:/        credentials:/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           user: vc_username/            user: ${VSPHERE_USER}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           password: vc_password/            password: ${VSPHERE_PASSWORD}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           server: vc_address/            server: ${VSPHERE_SERVER}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
+  script:
+    - |
+      cat python/ray/autoscaler/vsphere/example-full.yaml
+      bash --login -i -c "
+        ray exec python/ray/autoscaler/vsphere/example-full.yaml 'python ci/ray_ci/test_resource_validity.py 12 12288'
       "
   allow_failure: false
   needs: ["deploy-ray"]
