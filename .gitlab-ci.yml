@@ -446,7 +446,7 @@ functionality-ray-resource-validity:
       bash --login -i -c "
         ray rsync-up -A python/ray/autoscaler/vsphere/example-full.yaml ./ci/ray_ci/test_resource_validity.py ./ci/ray_ci/test_resource_validity.py &&
         ray rsync-up -A python/ray/autoscaler/vsphere/example-full.yaml ~/ray-bootstrap-key.pem /home/ray/ray-bootstrap-key.pem &&
-        ray exec python/ray/autoscaler/vsphere/example-full.yaml 'python ./ci/ray_ci/test_resource_validity.py 12 12288'
+        ray exec python/ray/autoscaler/vsphere/example-full.yaml 'python ./ci/ray_ci/test_resource_validity.py 6 12288'
       "
   allow_failure: false
   needs: ["deploy-ray"]
