@@ -9,9 +9,15 @@ ray.init()
 exit_with_error = False
 
 
-def verify(result, expected):
+def verify(result, expected, op="equal"):
     if type(result) in [int, float]:
-        return result == expected
+        if op == "lt":
+            return result < expected
+        elif op == "gt":
+            return result > expected
+        else:
+            return result == expected
+
     else:
         return str(result) == str(expected)
 
@@ -51,7 +57,9 @@ def run_ssh_command(host, command):
 def get_resource_by_node(node):
     resource = {}
     resource["CPU"] = run_ssh_command(node, "lscpu|awk '/^CPU\\(s\\):/{print $2}'")
-    resource["Memory"] = run_ssh_command(node, "free -m|awk '/^Mem:/{print $2}'")
+    resource["Memory"] = run_ssh_command(
+        node, "lsmem -b | awk '/^Total online memory:/{print $4}'"
+    )
 
     print(resource)
     return resource
