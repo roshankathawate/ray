@@ -439,6 +439,7 @@ functionality-ray-resource-validity:
       sed -i "s/#           user: vc_username/            user: ${VSPHERE_USER}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/#           password: vc_password/            password: ${VSPHERE_PASSWORD}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/#           server: vc_address/            server: ${VSPHERE_SERVER}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i -e '0, /resources: {}/ s/resources: {}/resources: {"CPU": 2, "Memory": 4096}/' -e '1, /resources: {}/ s/resources: {}/resources: {"CPU": 4, "Memory": 8192}/' python/ray/autoscaler/vsphere/example-full.yaml
       sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
   script:
     - |
