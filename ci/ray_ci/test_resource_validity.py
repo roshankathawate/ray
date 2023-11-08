@@ -25,8 +25,12 @@ def verify(result, expected, op="equal"):
 def get_all_nodes():
     all_nodes = []
     nodes = ray.nodes()
+    print("Nodes from Ray Command: " + str(nodes))
+
     for node in nodes:
         all_nodes.append(node["NodeName"])
+
+    print("All nodes' IPs: " + str(all_nodes))
 
     return all_nodes
 
@@ -61,7 +65,7 @@ def get_resource_by_node(node):
         node, "lsmem -b | awk '/^Total online memory:/{print $4}'"
     )
 
-    print(resource)
+    print(node + str(resource))
     return resource
 
 
