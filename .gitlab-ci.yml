@@ -29,7 +29,7 @@ stages:          # List of stages for jobs, and their order of execution
 variables:
   CI_BASE_IMAGE: $PROD_URL/ray_taiga_cicd/oss-ci-base_test
   CI_TEST_IMAGE: $PROD_URL/ray_taiga_cicd/oss-ci_test
-  CI_ENV_IMAGE: $PROD_URL/ray_taiga_cicd/docker:25
+  CI_ENV_IMAGE: harbor-repo.vmware.com/dockerhub-proxy-cache/docker:latest
   # DOCKER_DRIVER: overlay
   DEFAULT_BRANCH: remotes/origin/oss-master
   DEFAULT_WHL: $RAY_WHL
