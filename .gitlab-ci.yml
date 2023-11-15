@@ -29,6 +29,7 @@ stages:          # List of stages for jobs, and their order of execution
 variables:
   CI_BASE_IMAGE: $PROD_URL/ray_taiga_cicd/oss-ci-base_test
   CI_TEST_IMAGE: $PROD_URL/ray_taiga_cicd/oss-ci_test
+  CI_ENV_IMAGE: $PROD_URL/ray_taiga_cicd/docker:25
   # DOCKER_DRIVER: overlay
   DEFAULT_BRANCH: remotes/origin/oss-master
   DEFAULT_WHL: $RAY_WHL
@@ -54,7 +55,7 @@ default:
 # Since each build is time-consuming, it is only updated when it is a dev branch.
 ci_env_docker_build:
   stage: build_base_image
-  image: docker:latest
+  image: "$CI_ENV_IMAGE"
   script: 
     - docker login -u "$PROD_API_USER" -p "$PROD_API_KEY" "$PROD_URL"
     - docker pull $CI_BASE_IMAGE || true
