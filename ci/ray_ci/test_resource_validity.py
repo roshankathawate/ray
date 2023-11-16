@@ -1,5 +1,6 @@
 import subprocess
 import sys
+import time
 
 import ray
 
@@ -7,6 +8,8 @@ ray.init()
 
 
 exit_with_error = False
+
+WAIT_TIMEOUT = 600
 
 
 def verify(result, expected, op="equal"):
@@ -70,8 +73,18 @@ def get_resource_by_node(node):
 
 
 if __name__ == "__main__":
-    expected_total_cpu, expected_total_memory = int(sys.argv[1]), int(sys.argv[2])
+    expected_total_cpu, expected_total_memory, nodes_num = (
+        int(sys.argv[1]),
+        int(sys.argv[2]),
+        int(sys.argv[3]),
+    )
+
     nodes = get_all_nodes()
+    total_start_time = time.time()
+    while len(nodes) < nodes_num and time.time() - total_start_time < WAIT_TIMEOUT:
+        time.sleep(20)
+        nodes = get_all_nodes()
+
     total_cpu = 0.0
     total_memory = 0.0
     for node in nodes:
