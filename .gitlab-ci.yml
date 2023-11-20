@@ -61,7 +61,7 @@ ci_env_docker_build:
     - docker pull $CI_BASE_IMAGE || true
     - docker pull $CI_TEST_IMAGE || true
     - docker build -t $CI_BASE_IMAGE --cache-from $CI_BASE_IMAGE -f ./ci/docker/base.test.Dockerfile .
-    - sed -i '19d' ./ci/docker/test.Dockerfile
+    - sed -i '18d' ./ci/docker/test.Dockerfile
     - docker build --build-arg DOCKER_IMAGE_BASE_TEST=$CI_BASE_IMAGE -t $CI_TEST_IMAGE --cache-from $CI_TEST_IMAGE -f ./ci/docker/test.Dockerfile .
     - docker push $CI_BASE_IMAGE
     - docker push $CI_TEST_IMAGE
