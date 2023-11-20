@@ -61,7 +61,7 @@ ci_env_docker_build:
     - docker pull $CI_BASE_IMAGE || true
     - docker pull $CI_TEST_IMAGE || true
     - docker build -t $CI_BASE_IMAGE --cache-from $CI_BASE_IMAGE -f ./ci/docker/base.test.Dockerfile .
-    - sed -i '18d' ./ci/docker/test.Dockerfile
+    - sed -i '19d' ./ci/docker/test.Dockerfile
     - docker build --build-arg DOCKER_IMAGE_BASE_TEST=$CI_BASE_IMAGE -t $CI_TEST_IMAGE --cache-from $CI_TEST_IMAGE -f ./ci/docker/test.Dockerfile .
     - docker push $CI_BASE_IMAGE
     - docker push $CI_TEST_IMAGE
@@ -350,7 +350,7 @@ deploy-ray:
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
-      sed -i "s/cluster_name: default.*/cluster_name: default+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/cluster_name: default.*/cluster_name: ci-cluster+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s#image: \"rayproject/ray-ml:latest\"#image: \"${CPU_RAY_IMAGE}\"#g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/name: frozen-vm.*/name: frozen-vm-1/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s&#    ssh_private_key: /path/to/your/key.pem&    ssh_private_key: ~/ray-bootstrap-key.pem&g" python/ray/autoscaler/vsphere/example-full.yaml
@@ -391,7 +391,7 @@ functionality-ray-accessibility:
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
-      sed -i "s/cluster_name: default.*/cluster_name: default+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/cluster_name: default.*/cluster_name: ci-cluster+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s#image: \"rayproject/ray-ml:latest\"#image: \"${CPU_RAY_IMAGE}\"#g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/name: frozen-vm.*/name: frozen-vm-1/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s&#    ssh_private_key: /path/to/your/key.pem&    ssh_private_key: ~/ray-bootstrap-key.pem&g" python/ray/autoscaler/vsphere/example-full.yaml
@@ -433,7 +433,7 @@ functionality-ray-resource-validity:
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
-      sed -i "s/cluster_name: default.*/cluster_name: default+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/cluster_name: default.*/cluster_name: ci-cluster+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s#image: \"rayproject/ray-ml:latest\"#image: \"${CPU_RAY_IMAGE}\"#g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/name: frozen-vm.*/name: frozen-vm-1/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s&#    ssh_private_key: /path/to/your/key.pem&    ssh_private_key: ~/ray-bootstrap-key.pem&g" python/ray/autoscaler/vsphere/example-full.yaml
@@ -476,7 +476,7 @@ delete-ray:
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
-      sed -i "s/cluster_name: default.*/cluster_name: default+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/cluster_name: default.*/cluster_name: ci-cluster+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s#image: \"rayproject/ray-ml:latest\"#image: \"${CPU_RAY_IMAGE}\"#g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/name: frozen-vm.*/name: frozen-vm-1/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s&#    ssh_private_key: /path/to/your/key.pem&    ssh_private_key: ~/ray-bootstrap-key.pem&g" python/ray/autoscaler/vsphere/example-full.yaml
@@ -492,10 +492,10 @@ delete-ray:
       cat python/ray/autoscaler/vsphere/example-full.yaml
       bash --login -i -c "
         ray down -y python/ray/autoscaler/vsphere/example-full.yaml
+        python ./ci/ray_ci/clean_vsphere.py ${VSPHERE_SERVER} 443 ${VSPHERE_USER} ${VSPHERE_PASSWORD} D_VM_OUTDATED ray-ci-cluster 3
       "
   allow_failure: true
   needs: ["deploy-ray", "functionality-ray-accessibility", "functionality-ray-resource-validity"]
-  when: always
   rules:
     - if: $CI_COMMIT_REF_NAME !~ $GPU_feature_pattern && $CI_PIPELINE_SOURCE == "merge_request_event"
 
@@ -520,7 +520,7 @@ deploy-GPU-ray:
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
-      sed -i "s/cluster_name: default.*/cluster_name: default+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/cluster_name: default.*/cluster_name: ci-cluster+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s#image: \"rayproject/ray-ml:latest\"#image: \"${GPU_RAY_IMAGE}\"#g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/name: frozen-vm.*/name: frozen-vm-1/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s&#    ssh_private_key: /path/to/your/key.pem&    ssh_private_key: ~/ray-bootstrap-key.pem&g" python/ray/autoscaler/vsphere/example-full.yaml
@@ -561,7 +561,7 @@ functionality-GPU-ray-test:
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
-      sed -i "s/cluster_name: default.*/cluster_name: default+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/cluster_name: default.*/cluster_name: ci-cluster+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s#image: \"rayproject/ray-ml:latest\"#image: \"${GPU_RAY_IMAGE}\"#g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/name: frozen-vm.*/name: frozen-vm-1/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s&#    ssh_private_key: /path/to/your/key.pem&    ssh_private_key: ~/ray-bootstrap-key.pem&g" python/ray/autoscaler/vsphere/example-full.yaml
@@ -602,7 +602,7 @@ delete-GPU-ray:
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
-      sed -i "s/cluster_name: default.*/cluster_name: default+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/cluster_name: default.*/cluster_name: ci-cluster+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s#image: \"rayproject/ray-ml:latest\"#image: \"${GPU_RAY_IMAGE}\"#g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/name: frozen-vm.*/name: frozen-vm-1/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s&#    ssh_private_key: /path/to/your/key.pem&    ssh_private_key: ~/ray-bootstrap-key.pem&g" python/ray/autoscaler/vsphere/example-full.yaml
