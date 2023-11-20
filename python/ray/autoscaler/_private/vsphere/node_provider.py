@@ -600,8 +600,6 @@ class VsphereNodeProvider(NodeProvider):
                     frozen_vm_config.get("name", "frozen-vm"),
                     frozen_vm_resource_pool_name,
                 )
-                frozen_vm_obj = self.frozen_vm_scheduler.next_frozen_vm()
-
             # If resource_pool config is not present then create a frozen VM
             # with name as specified.
             else:
@@ -616,7 +614,6 @@ class VsphereNodeProvider(NodeProvider):
             # present in the resource pool specified.
             if frozen_vm_resource_pool_name:
                 self.ensure_frozen_vms_status(frozen_vm_resource_pool_name)
-                frozen_vm_obj = self.frozen_vm_scheduler.next_frozen_vm()
             # If resource_pool is not present then select the frozen VM with
             # name as specified.
             else:
