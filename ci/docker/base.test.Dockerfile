@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.3-labs
 
-FROM ubuntu:focal
+FROM harbor-repo.vmware.com/dockerhub-proxy-cache/ubuntu:focal
 
 ARG BUILDKITE_BAZEL_CACHE_URL
 ARG PYTHON=3.8
