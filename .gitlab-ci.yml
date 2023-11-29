@@ -34,6 +34,9 @@ variables:
   DEFAULT_BRANCH: remotes/origin/oss-master
   DEFAULT_WHL: $RAY_WHL
   CI_PIPELINE_ID: $CI_PIPELINE_ID
+  NFS_SERVER_ADDRESS: $NFS_SERVER_ADDRESS
+  NFS_EXPORT_PATH: $NFS_EXPORT_PATH
+  NFS_SERVER_EXTERNAL_ADDRESS: $NFS_SERVER_EXTERNAL_ADDRESS
 
   DEV_CPU_VSPHERE_SERVER: $DEV_CPU_VSPHERE_SERVER
   DEV_CPU_VSPHERE_USER: $DEV_CPU_VSPHERE_USER
@@ -360,7 +363,9 @@ deploy-ray:
       sed -i "s/#           password: vc_password/            password: ${VSPHERE_PASSWORD}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/#           server: vc_address/            server: ${VSPHERE_SERVER}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i -e '0, /resources: {}/ s/resources: {}/resources: {"CPU": 2, "Memory": 4096}/' -e '1, /resources: {}/ s/resources: {}/resources: {"CPU": 4, "Memory": 8192}/' python/ray/autoscaler/vsphere/example-full.yaml
-      sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml      
+      sed -i "s#initialization_commands: \[\]#initialization_commands: \\n    - sudo mkdir -p /mnt/shared_storage/experiment_results \\n    - sudo mount ${NFS_SERVER_ADDRESS}:${NFS_EXPORT_PATH} /mnt/shared_storage/experiment_results \\n    - sudo chmod 777 /mnt/shared_storage/experiment_results#g"  python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i -e '/- --ulimit nofile=65536:65536/a\'$'\n''        - -v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results' python/ray/autoscaler/vsphere/example-full.yaml
   script:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
@@ -402,6 +407,8 @@ functionality-ray-accessibility:
       sed -i "s/#           server: vc_address/            server: ${VSPHERE_SERVER}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i -e '0, /resources: {}/ s/resources: {}/resources: {"CPU": 2, "Memory": 4096}/' -e '1, /resources: {}/ s/resources: {}/resources: {"CPU": 4, "Memory": 8192}/' python/ray/autoscaler/vsphere/example-full.yaml
       sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s#initialization_commands: \[\]#initialization_commands: \\n    - sudo mkdir -p /mnt/shared_storage/experiment_results \\n    - sudo mount ${NFS_SERVER_ADDRESS}:${NFS_EXPORT_PATH} /mnt/shared_storage/experiment_results \\n    - sudo chmod 777 /mnt/shared_storage/experiment_results#g"  python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i -e '/- --ulimit nofile=65536:65536/a\'$'\n''        - -v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results' python/ray/autoscaler/vsphere/example-full.yaml
   script:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
@@ -444,6 +451,8 @@ functionality-ray-resource-validity:
       sed -i "s/#           server: vc_address/            server: ${VSPHERE_SERVER}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i -e '0, /resources: {}/ s/resources: {}/resources: {"CPU": 2, "Memory": 4096}/' -e '1, /resources: {}/ s/resources: {}/resources: {"CPU": 4, "Memory": 8192}/' python/ray/autoscaler/vsphere/example-full.yaml
       sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s#initialization_commands: \[\]#initialization_commands: \\n    - sudo mkdir -p /mnt/shared_storage/experiment_results \\n    - sudo mount ${NFS_SERVER_ADDRESS}:${NFS_EXPORT_PATH} /mnt/shared_storage/experiment_results \\n    - sudo chmod 777 /mnt/shared_storage/experiment_results#g"  python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i -e '/- --ulimit nofile=65536:65536/a\'$'\n''        - -v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results' python/ray/autoscaler/vsphere/example-full.yaml
   script:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
@@ -465,6 +474,7 @@ delete-ray:
     VSPHERE_SERVER: "$DEV_CPU_VSPHERE_SERVER"
     VSPHERE_USER: "$DEV_CPU_VSPHERE_USER"
     VSPHERE_PASSWORD: "$DEV_CPU_VSPHERE_PASSWORD"
+    NFS_SERVER_ADDRESS: "$NFS_SERVER_ADDRESS"
     SECURE_FILES_DOWNLOAD_PATH: "key/"
   before_script:
     - |
@@ -487,6 +497,8 @@ delete-ray:
       sed -i "s/#           server: vc_address/            server: ${VSPHERE_SERVER}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i -e '0, /resources: {}/ s/resources: {}/resources: {"CPU": 2, "Memory": 4096}/' -e '1, /resources: {}/ s/resources: {}/resources: {"CPU": 4, "Memory": 8192}/' python/ray/autoscaler/vsphere/example-full.yaml
       sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s#initialization_commands: \[\]#initialization_commands: \\n    - sudo mkdir -p /mnt/shared_storage/experiment_results \\n    - sudo mount ${NFS_SERVER_ADDRESS}:${NFS_EXPORT_PATH} /mnt/shared_storage/experiment_results \\n    - sudo chmod 777 /mnt/shared_storage/experiment_results#g"  python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i -e '/- --ulimit nofile=65536:65536/a\'$'\n''        - -v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results' python/ray/autoscaler/vsphere/example-full.yaml
   script:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
@@ -530,6 +542,8 @@ deploy-GPU-ray:
       sed -i "s/#           password: vc_password/            password: ${VSPHERE_PASSWORD}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/#           server: vc_address/            server: ${VSPHERE_SERVER}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s#initialization_commands: \[\]#initialization_commands: \\n    - sudo mkdir -p /mnt/shared_storage/experiment_results \\n    - sudo mount ${NFS_SERVER_EXTERNAL_ADDRESS}:${NFS_EXPORT_PATH} /mnt/shared_storage/experiment_results \\n    - sudo chmod 777 /mnt/shared_storage/experiment_results#g"  python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i -e '/- --ulimit nofile=65536:65536/a\'$'\n''        - -v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results' python/ray/autoscaler/vsphere/example-full.yaml
   script:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
@@ -571,6 +585,8 @@ functionality-GPU-ray-test:
       sed -i "s/#           password: vc_password/            password: ${VSPHERE_PASSWORD}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/#           server: vc_address/            server: ${VSPHERE_SERVER}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s#initialization_commands: \[\]#initialization_commands: \\n    - sudo mkdir -p /mnt/shared_storage/experiment_results \\n    - sudo mount ${NFS_SERVER_EXTERNAL_ADDRESS}:${NFS_EXPORT_PATH} /mnt/shared_storage/experiment_results \\n    - sudo chmod 777 /mnt/shared_storage/experiment_results#g"  python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i -e '/- --ulimit nofile=65536:65536/a\'$'\n''        - -v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results' python/ray/autoscaler/vsphere/example-full.yaml
   script:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
@@ -612,6 +628,8 @@ delete-GPU-ray:
       sed -i "s/#           password: vc_password/            password: ${VSPHERE_PASSWORD}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/#           server: vc_address/            server: ${VSPHERE_SERVER}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s#initialization_commands: \[\]#initialization_commands: \\n    - sudo mkdir -p /mnt/shared_storage/experiment_results \\n    - sudo mount ${NFS_SERVER_EXTERNAL_ADDRESS}:${NFS_EXPORT_PATH} /mnt/shared_storage/experiment_results \\n    - sudo chmod 777 /mnt/shared_storage/experiment_results#g"  python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i -e '/- --ulimit nofile=65536:65536/a\'$'\n''        - -v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results' python/ray/autoscaler/vsphere/example-full.yaml
   script:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
@@ -655,6 +673,8 @@ deploy-dev-ray:
       sed -i "s/#           password: vc_password/            password: ${VSPHERE_PASSWORD}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i "s/#           server: vc_address/            server: ${VSPHERE_SERVER}/g" python/ray/autoscaler/vsphere/example-full.yaml
       sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s#initialization_commands: \[\]#initialization_commands: \\n    - sudo mkdir -p /mnt/shared_storage/experiment_results \\n    - sudo mount ${NFS_SERVER_ADDRESS}:${NFS_EXPORT_PATH} /mnt/shared_storage/experiment_results \\n    - sudo chmod 777 /mnt/shared_storage/experiment_results#g"  python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i -e '/- --ulimit nofile=65536:65536/a\'$'\n''        - -v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results' python/ray/autoscaler/vsphere/example-full.yaml
   script:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml

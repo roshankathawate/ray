@@ -141,6 +141,7 @@ rsync_filter: []
 initialization_commands:
     - sudo mkdir -p /mnt/shared_storage/experiment_results
     - sudo mount <NFS_SERVER_ADDRESS>:<NFS_EXPORT_PATH> /mnt/shared_storage/experiment_results
+    - sudo chmod 777 /mnt/shared_storage/experiment_results
 
 # List of shell commands to run to set up nodes.
 setup_commands: []
