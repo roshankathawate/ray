@@ -423,6 +423,53 @@ deploy-single-ray-from-ovf:
   rules:
     - if: $CI_COMMIT_REF_NAME !~ $GPU_feature_pattern && $CI_PIPELINE_SOURCE == "merge_request_event"
 
+deploy-multi-ray-from-ovf:
+  stage: functionality_tests-environment-deploy
+  image:
+    name: "$CI_TEST_IMAGE"
+  variables:
+    VSPHERE_SERVER: "$DEV_CPU_VSPHERE_SERVER"
+    VSPHERE_USER: "$DEV_CPU_VSPHERE_USER"
+    VSPHERE_PASSWORD: "$DEV_CPU_VSPHERE_PASSWORD"
+    SECURE_FILES_DOWNLOAD_PATH: "key/"
+  before_script:
+    - |
+      curl -s https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer | bash
+      cp key/ray-bootstrap-key.pem ~/ray-bootstrap-key.pem
+      cp key/ray_bootstrap_public_key.key ~/ray_bootstrap_public_key.key
+      chmod 0600 ~/ray-bootstrap-key.pem
+      bash --login -i -c "
+        pip install -U $RAY_WHL
+        python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
+      "
+      sed -i "s/cluster_name: default.*/cluster_name: ci-multi-cluster+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s#image: \"rayproject/ray-ml:latest\"#image: \"${CPU_RAY_IMAGE}\"#g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/name: frozen-vm.*/name: frozen-vm-multi-${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -E -i "s/^([[:space:]]*)library_item:.*/\1library_item: frozen-vm-1/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -E -i "s/^([[:space:]]*)datastore:.*/\1datastore: vol1/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -E -i "s/^([[:space:]]*)resource_pool:.*/\1resource_pool: Multi-Ovf/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s&#    ssh_private_key: /path/to/your/key.pem&    ssh_private_key: ~/ray-bootstrap-key.pem&g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/pull_before_run: True/pull_before_run: False/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#       credentials:/        credentials:/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           user: vc_username/            user: ${VSPHERE_USER}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           password: vc_password/            password: ${VSPHERE_PASSWORD}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           server: vc_address/            server: ${VSPHERE_SERVER}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i -e '0, /resources: {}/ s/resources: {}/resources: {"CPU": 2, "Memory": 4096}/' -e '1, /resources: {}/ s/resources: {}/resources: {"CPU": 4, "Memory": 8192}/' python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s#initialization_commands: \[\]#initialization_commands: \\n    - sudo mkdir -p /mnt/shared_storage/experiment_results \\n    - sudo mount ${NFS_SERVER_ADDRESS}:${NFS_EXPORT_PATH} /mnt/shared_storage/experiment_results \\n    - sudo chmod 777 /mnt/shared_storage/experiment_results#g"  python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i -e '/- --ulimit nofile=65536:65536/a\'$'\n''        - -v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results' python/ray/autoscaler/vsphere/example-full.yaml
+  script:
+    - |
+      cat python/ray/autoscaler/vsphere/example-full.yaml
+      bash --login -i -c "
+        ray up -y python/ray/autoscaler/vsphere/example-full.yaml --no-config-cache
+      "
+  allow_failure: false
+  needs: []
+  rules:
+    - if: $CI_COMMIT_REF_NAME !~ $GPU_feature_pattern && $CI_PIPELINE_SOURCE == "merge_request_event"
+
+
 functionality-ray-accessibility:
   stage: functionality_tests
   image:
@@ -604,6 +651,52 @@ delete-single-ray-from-ovf:
   rules:
     - if: $CI_COMMIT_REF_NAME !~ $GPU_feature_pattern && $CI_PIPELINE_SOURCE == "merge_request_event"
 
+delete-multi-ray-from-ovf:
+  stage: functionality_tests-environment-delete
+  image:
+    name: "$CI_TEST_IMAGE"
+  variables:
+    VSPHERE_SERVER: "$DEV_CPU_VSPHERE_SERVER"
+    VSPHERE_USER: "$DEV_CPU_VSPHERE_USER"
+    VSPHERE_PASSWORD: "$DEV_CPU_VSPHERE_PASSWORD"
+    SECURE_FILES_DOWNLOAD_PATH: "key/"
+  before_script:
+    - |
+      curl -s https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer | bash
+      cp key/ray-bootstrap-key.pem ~/ray-bootstrap-key.pem
+      cp key/ray_bootstrap_public_key.key ~/ray_bootstrap_public_key.key
+      chmod 0600 ~/ray-bootstrap-key.pem
+      bash --login -i -c "
+        pip install -U $RAY_WHL
+        python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
+      "
+      sed -i "s/cluster_name: default.*/cluster_name: ci-multi-cluster+${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s#image: \"rayproject/ray-ml:latest\"#image: \"${CPU_RAY_IMAGE}\"#g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/name: frozen-vm.*/name: frozen-vm-multi-${CI_PIPELINE_ID}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -E -i "s/^([[:space:]]*)library_item:.*/\1library_item: frozen-vm-1/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -E -i "s/^([[:space:]]*)datastore:.*/\1datastore: vol1/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -E -i "s/^([[:space:]]*)resource_pool:.*/\1resource_pool: Multi-Ovf/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s&#    ssh_private_key: /path/to/your/key.pem&    ssh_private_key: ~/ray-bootstrap-key.pem&g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/pull_before_run: True/pull_before_run: False/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#       credentials:/        credentials:/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           user: vc_username/            user: ${VSPHERE_USER}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           password: vc_password/            password: ${VSPHERE_PASSWORD}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s/#           server: vc_address/            server: ${VSPHERE_SERVER}/g" python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i -e '0, /resources: {}/ s/resources: {}/resources: {"CPU": 2, "Memory": 4096}/' -e '1, /resources: {}/ s/resources: {}/resources: {"CPU": 4, "Memory": 8192}/' python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i "s#initialization_commands: \[\]#initialization_commands: \\n    - sudo mkdir -p /mnt/shared_storage/experiment_results \\n    - sudo mount ${NFS_SERVER_ADDRESS}:${NFS_EXPORT_PATH} /mnt/shared_storage/experiment_results \\n    - sudo chmod 777 /mnt/shared_storage/experiment_results#g"  python/ray/autoscaler/vsphere/example-full.yaml
+      sed -i -e '/- --ulimit nofile=65536:65536/a\'$'\n''        - -v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results' python/ray/autoscaler/vsphere/example-full.yaml
+  script:
+    - |
+      cat python/ray/autoscaler/vsphere/example-full.yaml
+      bash --login -i -c "
+        ray down -y python/ray/autoscaler/vsphere/example-full.yaml
+        python ./ci/ray_ci/clean_vsphere.py ${VSPHERE_SERVER} 443 ${VSPHERE_USER} ${VSPHERE_PASSWORD} D_VM_OUTDATED frozen-vm-multi-${CI_PIPELINE_ID} -1
+      "
+  allow_failure: true
+  needs: ["deploy-multi-ray-from-ovf"]
+  rules:
+    - if: $CI_COMMIT_REF_NAME !~ $GPU_feature_pattern && $CI_PIPELINE_SOURCE == "merge_request_event"
 
 # GPU test
 deploy-GPU-ray:
