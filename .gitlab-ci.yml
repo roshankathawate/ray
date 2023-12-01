@@ -690,7 +690,7 @@ delete-multi-ray-from-ovf:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
       bash --login -i -c "
-        ray down -y python/ray/autoscaler/vsphere/example-full.yaml --no-config-cache
+        ray down -y python/ray/autoscaler/vsphere/example-full.yaml
         python ./ci/ray_ci/clean_vsphere.py ${VSPHERE_SERVER} 443 ${VSPHERE_USER} ${VSPHERE_PASSWORD} D_VM_OUTDATED frozen-vm-multi-${CI_PIPELINE_ID} -1
       "
   allow_failure: true
