@@ -384,13 +384,17 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status TryReadObjectRefStream(const ObjectID &generator_id,
                                 rpc::ObjectReference *object_ref_out);
 
+  /// Return True if there's no more object to read. False otherwise.
+  bool IsFinished(const ObjectID &generator_id) const;
+
   /// Read the next index of a ObjectRefStream of generator_id without
   /// consuming an index.
   /// \param[in] generator_id The object ref id of the streaming
   /// generator task.
-  /// \return A object reference of the next index.
+  /// \return A object reference of the next index and if the object is already ready
+  /// (meaning if the object's value if retrievable).
   /// It should not be nil.
-  rpc::ObjectReference PeekObjectRefStream(const ObjectID &generator_id);
+  std::pair<rpc::ObjectReference, bool> PeekObjectRefStream(const ObjectID &generator_id);
 
   /// Delete the ObjectRefStream that was
   /// created upon the initial task
@@ -1284,7 +1288,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param stderr_path Path to stderr log file.
   /// \param stdout_start_offset Start offset of the stdout for this task.
   /// \param stderr_start_offset Start offset of the stderr for this task.
-  void RecordTaskLogStart(const std::string &stdout_path,
+  void RecordTaskLogStart(const TaskID &task_id,
+                          int32_t attempt_number,
+                          const std::string &stdout_path,
                           const std::string &stderr_path,
                           int64_t stdout_start_offset,
                           int64_t stderr_start_offset) const;
@@ -1295,7 +1301,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param stdout_end_offset End offset of the stdout for this task.
   /// \param stderr_end_offset End offset of the stderr for this task.
-  void RecordTaskLogEnd(int64_t stdout_end_offset, int64_t stderr_end_offset) const;
+  void RecordTaskLogEnd(const TaskID &task_id,
+                        int32_t attempt_number,
+                        int64_t stdout_end_offset,
+                        int64_t stderr_end_offset) const;
 
   /// (WORKER mode only) Gracefully exit the worker. `Graceful` means the worker will
   /// exit when it drains all tasks and cleans all owned objects.
@@ -1658,7 +1667,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<raylet::RayletClient> local_raylet_client_;
 
   // Thread that runs a boost::asio service to process IO events.
-  std::thread io_thread_;
+  boost::thread io_thread_;
 
   // Keeps track of object ID reference counts.
   std::shared_ptr<ReferenceCounter> reference_counter_;

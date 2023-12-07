@@ -73,6 +73,20 @@ class PyvmomiSdkProvider:
 
         # Instance parameters
         self.timeout = 0
+        self.cached = {
+            KeyType.Name: {
+                ObjectType.ResourcePool: {},
+                ObjectType.VirtualMachine: {},
+                ObjectType.Datastore: {},
+                ObjectType.ClusterComputeResource: {},
+            },
+            KeyType.ObjectID: {
+                ObjectType.ResourcePool: {},
+                ObjectType.VirtualMachine: {},
+                ObjectType.Datastore: {},
+                ObjectType.ClusterComputeResource: {},
+            },
+        }
 
         # Add cache to cache all fetched object
         self.cached = {
@@ -167,6 +181,10 @@ class PyvmomiSdkProvider:
             )
         if self.pyvmomi_sdk_client is None:
             raise ValueError("Must init pyvmomi_sdk_client first")
+
+        cached_obj = self.get_obj_from_cache(vimtype, name, obj_id)
+        if cached_obj:
+            return cached_obj
 
         cached_obj = self.get_obj_from_cache(vimtype, name, obj_id)
         if cached_obj:
