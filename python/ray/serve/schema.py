@@ -15,7 +15,6 @@ from ray._private.pydantic_compat import (
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     ApplicationStatus,
-    DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusTrigger,
     ProxyStatus,
@@ -27,6 +26,7 @@ from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_DEFAULT_APP_NAME,
 )
+from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT
 from ray.serve.config import ProxyLocation
 from ray.util.annotations import PublicAPI
@@ -36,8 +36,8 @@ TARGET_CAPACITY_FIELD = Field(
     default=None,
     description=(
         "[EXPERIMENTAL]: the target capacity percentage for all replicas across the "
-        "cluster. The `num_replicas`, `min_replicas`, and `max_replicas` for each "
-        "deployment will be scaled by this percentage."
+        "cluster. The `num_replicas`, `min_replicas`, `max_replicas`, and "
+        "`initial_replicas` for each deployment will be scaled by this percentage."
     ),
     ge=0,
     le=100,
