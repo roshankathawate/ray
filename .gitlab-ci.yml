@@ -353,14 +353,14 @@ deploy-ray:
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
-      sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
       python ./ci/ray_ci/yaml_update.py python/ray/autoscaler/vsphere/example-full.yaml cluster_name=ci-cluster+${CI_PIPELINE_ID} \
         docker.image="${CPU_RAY_IMAGE}" provider.vsphere_config.frozen_vm.name=frozen-vm-1 auth.ssh_private_key="~/ray-bootstrap-key.pem" \
         docker.pull_before_run=false provider.vsphere_config.credentials.user="${VSPHERE_USER}" provider.vsphere_config.credentials.password="${VSPHERE_PASSWORD}" \
         provider.vsphere_config.credentials.server="${VSPHERE_SERVER}" available_node_types.worker.resources='{"CPU": 4, "Memory": 8192}' \
         available_node_types.ray.head.default.resources='{"CPU": 2, "Memory": 4096}' \
         initialization_commands="['sudo mkdir -p /mnt/shared_storage/experiment_results','sudo mount ${NFS_SERVER_ADDRESS}:${NFS_EXPORT_PATH} /mnt/shared_storage/experiment_results','sudo chmod 777 /mnt/shared_storage/experiment_results']" \
-        docker.run_options='["--ulimit nofile=65536:65536","-v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results"]'
+        docker.run_options='["--ulimit nofile=65536:65536","-v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results"]' \
+        file_mounts='{"/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
   script:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
@@ -391,7 +391,6 @@ deploy-single-ray-from-ovf:
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
-      sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
       python ./ci/ray_ci/yaml_update.py python/ray/autoscaler/vsphere/example-full.yaml cluster_name=ci-single-cluster+${CI_PIPELINE_ID} \
         docker.image="${CPU_RAY_IMAGE}" provider.vsphere_config.frozen_vm.name=frozen-vm-single-${CI_PIPELINE_ID} auth.ssh_private_key="~/ray-bootstrap-key.pem" \
         docker.pull_before_run=false provider.vsphere_config.credentials.user="${VSPHERE_USER}" provider.vsphere_config.credentials.password="${VSPHERE_PASSWORD}" \
@@ -401,7 +400,8 @@ deploy-single-ray-from-ovf:
         docker.run_options='["--ulimit nofile=65536:65536","-v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results"]' \
         provider.vsphere_config.frozen_vm.library_item=frozen-vm-1 provider.vsphere_config.frozen_vm.datastore=vol1 \
         provider.vsphere_config.frozen_vm.cluster=RegionA01-Compute available_node_types.ray.head.default.node_config.datastore=vol1 \
-        available_node_types.worker.node_config.datastore=vol1
+        available_node_types.worker.node_config.datastore=vol1 \
+        file_mounts='{"/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
 
 
   script:
@@ -434,7 +434,6 @@ deploy-multi-ray-from-ovf:
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
-      sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
       python ./ci/ray_ci/yaml_update.py python/ray/autoscaler/vsphere/example-full.yaml cluster_name=ci-multi-cluster+${CI_PIPELINE_ID} \
         docker.image="${CPU_RAY_IMAGE}" provider.vsphere_config.frozen_vm.name=frozen-vm-multi-${CI_PIPELINE_ID} auth.ssh_private_key="~/ray-bootstrap-key.pem" \
         docker.pull_before_run=false provider.vsphere_config.credentials.user="${VSPHERE_USER}" provider.vsphere_config.credentials.password="${VSPHERE_PASSWORD}" \
@@ -445,7 +444,8 @@ deploy-multi-ray-from-ovf:
         provider.vsphere_config.frozen_vm.library_item=frozen-vm-1 provider.vsphere_config.frozen_vm.datastore=vol1 \
         available_node_types.ray.head.default.node_config.datastore=vol1 available_node_types.worker.node_config.datastore=vol1 \
         provider.vsphere_config.frozen_vm.resource_pool=Multi-Ovf available_node_types.ray.head.default.node_config.resource_pool=Multi-Ovf \
-        available_node_types.worker.node_config.resource_pool=Multi-Ovf
+        available_node_types.worker.node_config.resource_pool=Multi-Ovf \
+        file_mounts='{"/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
 
   script:
     - |
@@ -478,14 +478,14 @@ functionality-ray-accessibility:
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
-      sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
       python ./ci/ray_ci/yaml_update.py python/ray/autoscaler/vsphere/example-full.yaml cluster_name=ci-cluster+${CI_PIPELINE_ID} \
         docker.image="${CPU_RAY_IMAGE}" provider.vsphere_config.frozen_vm.name=frozen-vm-1 auth.ssh_private_key="~/ray-bootstrap-key.pem" \
         docker.pull_before_run=false provider.vsphere_config.credentials.user="${VSPHERE_USER}" provider.vsphere_config.credentials.password="${VSPHERE_PASSWORD}" \
         provider.vsphere_config.credentials.server="${VSPHERE_SERVER}" available_node_types.worker.resources='{"CPU": 4, "Memory": 8192}' \
         available_node_types.ray.head.default.resources='{"CPU": 2, "Memory": 4096}' \
         initialization_commands="['sudo mkdir -p /mnt/shared_storage/experiment_results','sudo mount ${NFS_SERVER_ADDRESS}:${NFS_EXPORT_PATH} /mnt/shared_storage/experiment_results','sudo chmod 777 /mnt/shared_storage/experiment_results']" \
-        docker.run_options='["--ulimit nofile=65536:65536","-v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results"]'
+        docker.run_options='["--ulimit nofile=65536:65536","-v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results"]' \
+        file_mounts='{"/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
   script:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
@@ -517,14 +517,14 @@ functionality-ray-resource-validity:
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
-      sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
       python ./ci/ray_ci/yaml_update.py python/ray/autoscaler/vsphere/example-full.yaml cluster_name=ci-cluster+${CI_PIPELINE_ID} \
         docker.image="${CPU_RAY_IMAGE}" provider.vsphere_config.frozen_vm.name=frozen-vm-1 auth.ssh_private_key="~/ray-bootstrap-key.pem" \
         docker.pull_before_run=false provider.vsphere_config.credentials.user="${VSPHERE_USER}" provider.vsphere_config.credentials.password="${VSPHERE_PASSWORD}" \
         provider.vsphere_config.credentials.server="${VSPHERE_SERVER}" available_node_types.worker.resources='{"CPU": 4, "Memory": 8192}' \
         available_node_types.ray.head.default.resources='{"CPU": 2, "Memory": 8192}' \
         initialization_commands="['sudo mkdir -p /mnt/shared_storage/experiment_results','sudo mount ${NFS_SERVER_ADDRESS}:${NFS_EXPORT_PATH} /mnt/shared_storage/experiment_results','sudo chmod 777 /mnt/shared_storage/experiment_results']" \
-        docker.run_options='["--ulimit nofile=65536:65536","-v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results"]'
+        docker.run_options='["--ulimit nofile=65536:65536","-v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results"]' \
+        file_mounts='{"/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
   script:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
@@ -558,14 +558,14 @@ delete-ray:
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
-      sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
       python ./ci/ray_ci/yaml_update.py python/ray/autoscaler/vsphere/example-full.yaml cluster_name=ci-cluster+${CI_PIPELINE_ID} \
         docker.image="${CPU_RAY_IMAGE}" provider.vsphere_config.frozen_vm.name=frozen-vm-1 auth.ssh_private_key="~/ray-bootstrap-key.pem" \
         docker.pull_before_run=false provider.vsphere_config.credentials.user="${VSPHERE_USER}" provider.vsphere_config.credentials.password="${VSPHERE_PASSWORD}" \
         provider.vsphere_config.credentials.server="${VSPHERE_SERVER}" available_node_types.worker.resources='{"CPU": 4, "Memory": 8192}' \
         available_node_types.ray.head.default.resources='{"CPU": 2, "Memory": 4096}' \
         initialization_commands="['sudo mkdir -p /mnt/shared_storage/experiment_results','sudo mount ${NFS_SERVER_ADDRESS}:${NFS_EXPORT_PATH} /mnt/shared_storage/experiment_results','sudo chmod 777 /mnt/shared_storage/experiment_results']" \
-        docker.run_options='["--ulimit nofile=65536:65536","-v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results"]'
+        docker.run_options='["--ulimit nofile=65536:65536","-v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results"]' \
+        file_mounts='{"/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
   script:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
@@ -597,7 +597,6 @@ delete-single-ray-from-ovf:
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
-      sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
       python ./ci/ray_ci/yaml_update.py python/ray/autoscaler/vsphere/example-full.yaml cluster_name=ci-single-cluster+${CI_PIPELINE_ID} \
         docker.image="${CPU_RAY_IMAGE}" provider.vsphere_config.frozen_vm.name=frozen-vm-single-${CI_PIPELINE_ID} auth.ssh_private_key="~/ray-bootstrap-key.pem" \
         docker.pull_before_run=false provider.vsphere_config.credentials.user="${VSPHERE_USER}" provider.vsphere_config.credentials.password="${VSPHERE_PASSWORD}" \
@@ -607,7 +606,8 @@ delete-single-ray-from-ovf:
         docker.run_options='["--ulimit nofile=65536:65536","-v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results"]' \
         provider.vsphere_config.frozen_vm.library_item=frozen-vm-1 provider.vsphere_config.frozen_vm.datastore=vol1 \
         provider.vsphere_config.frozen_vm.cluster=RegionA01-Compute available_node_types.ray.head.default.node_config.datastore=vol1 \
-        available_node_types.worker.node_config.datastore=vol1
+        available_node_types.worker.node_config.datastore=vol1 \
+        file_mounts='{"/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
 
   script:
     - |
@@ -650,7 +650,8 @@ delete-multi-ray-from-ovf:
         provider.vsphere_config.frozen_vm.library_item=frozen-vm-1 provider.vsphere_config.frozen_vm.datastore=vol1 \
         available_node_types.ray.head.default.node_config.datastore=vol1 available_node_types.worker.node_config.datastore=vol1 \
         provider.vsphere_config.frozen_vm.resource_pool=Multi-Ovf available_node_types.ray.head.default.node_config.resource_pool=Multi-Ovf \
-        available_node_types.worker.node_config.resource_pool=Multi-Ovf
+        available_node_types.worker.node_config.resource_pool=Multi-Ovf \
+        file_mounts='{"/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
 
   script:
     - |
@@ -674,7 +675,7 @@ deploy-GPU-ray:
     VSPHERE_USER: "$DEV_GPU_VSPHERE_USER"
     VSPHERE_PASSWORD: "$DEV_GPU_VSPHERE_PASSWORD"
     SECURE_FILES_DOWNLOAD_PATH: "key/"
-  before_script:
+  before_script: 
     - |
       curl -s https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer | bash
       cp key/ray-bootstrap-key.pem ~/ray-bootstrap-key.pem
@@ -684,14 +685,14 @@ deploy-GPU-ray:
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
-      sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
       python ./ci/ray_ci/yaml_update.py python/ray/autoscaler/vsphere/example-full.yaml cluster_name=ci-cluster+${CI_PIPELINE_ID} \
         docker.image="${CPU_RAY_IMAGE}" provider.vsphere_config.frozen_vm.name=frozen-vm-1 auth.ssh_private_key="~/ray-bootstrap-key.pem" \
         docker.pull_before_run=false provider.vsphere_config.credentials.user="${VSPHERE_USER}" provider.vsphere_config.credentials.password="${VSPHERE_PASSWORD}" \
         provider.vsphere_config.credentials.server="${VSPHERE_SERVER}" available_node_types.worker.resources='{"CPU": 4, "Memory": 8192}' \
         available_node_types.ray.head.default.resources='{"CPU": 2, "Memory": 4096}' \
         initialization_commands="['sudo mkdir -p /mnt/shared_storage/experiment_results','sudo mount ${NFS_SERVER_ADDRESS}:${NFS_EXPORT_PATH} /mnt/shared_storage/experiment_results','sudo chmod 777 /mnt/shared_storage/experiment_results']" \
-        docker.run_options='["--ulimit nofile=65536:65536","-v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results"]'
+        docker.run_options='["--ulimit nofile=65536:65536","-v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results"]' \
+        file_mounts='{"/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
 
   script:
     - |
@@ -724,14 +725,14 @@ functionality-GPU-ray-test:
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
-      sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
       python ./ci/ray_ci/yaml_update.py python/ray/autoscaler/vsphere/example-full.yaml cluster_name=ci-cluster+${CI_PIPELINE_ID} \
         docker.image="${CPU_RAY_IMAGE}" provider.vsphere_config.frozen_vm.name=frozen-vm-1 auth.ssh_private_key="~/ray-bootstrap-key.pem" \
         docker.pull_before_run=false provider.vsphere_config.credentials.user="${VSPHERE_USER}" provider.vsphere_config.credentials.password="${VSPHERE_PASSWORD}" \
         provider.vsphere_config.credentials.server="${VSPHERE_SERVER}" available_node_types.worker.resources='{"CPU": 4, "Memory": 8192}' \
         available_node_types.ray.head.default.resources='{"CPU": 2, "Memory": 4096}' \
         initialization_commands="['sudo mkdir -p /mnt/shared_storage/experiment_results','sudo mount ${NFS_SERVER_ADDRESS}:${NFS_EXPORT_PATH} /mnt/shared_storage/experiment_results','sudo chmod 777 /mnt/shared_storage/experiment_results']" \
-        docker.run_options='["--ulimit nofile=65536:65536","-v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results"]'
+        docker.run_options='["--ulimit nofile=65536:65536","-v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results"]' \
+        file_mounts='{"/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
   script:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
@@ -763,14 +764,14 @@ delete-GPU-ray:
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
-      sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
       python ./ci/ray_ci/yaml_update.py python/ray/autoscaler/vsphere/example-full.yaml cluster_name=ci-cluster+${CI_PIPELINE_ID} \
         docker.image="${CPU_RAY_IMAGE}" provider.vsphere_config.frozen_vm.name=frozen-vm-1 auth.ssh_private_key="~/ray-bootstrap-key.pem" \
         docker.pull_before_run=false provider.vsphere_config.credentials.user="${VSPHERE_USER}" provider.vsphere_config.credentials.password="${VSPHERE_PASSWORD}" \
         provider.vsphere_config.credentials.server="${VSPHERE_SERVER}" available_node_types.worker.resources='{"CPU": 4, "Memory": 8192}' \
         available_node_types.ray.head.default.resources='{"CPU": 2, "Memory": 4096}' \
         initialization_commands="['sudo mkdir -p /mnt/shared_storage/experiment_results','sudo mount ${NFS_SERVER_ADDRESS}:${NFS_EXPORT_PATH} /mnt/shared_storage/experiment_results','sudo chmod 777 /mnt/shared_storage/experiment_results']" \
-        docker.run_options='["--ulimit nofile=65536:65536","-v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results"]'
+        docker.run_options='["--ulimit nofile=65536:65536","-v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results"]' \
+        file_mounts='{"/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
   script:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
@@ -804,14 +805,14 @@ deploy-dev-ray:
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
-      sed -i 's&#    "/path1/on/remote/machine": "/path1/on/local/machine",&     "/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler",&g' python/ray/autoscaler/vsphere/example-full.yaml
       python ./ci/ray_ci/yaml_update.py python/ray/autoscaler/vsphere/example-full.yaml cluster_name=ci-cluster+${CI_PIPELINE_ID} \
         docker.image="${CPU_RAY_IMAGE}" provider.vsphere_config.frozen_vm.name=frozen-vm-1 auth.ssh_private_key="~/ray-bootstrap-key.pem" \
         docker.pull_before_run=false provider.vsphere_config.credentials.user="${VSPHERE_USER}" provider.vsphere_config.credentials.password="${VSPHERE_PASSWORD}" \
         provider.vsphere_config.credentials.server="${VSPHERE_SERVER}" available_node_types.worker.resources='{"CPU": 4, "Memory": 8192}' \
         available_node_types.ray.head.default.resources='{"CPU": 2, "Memory": 4096}' \
         initialization_commands="['sudo mkdir -p /mnt/shared_storage/experiment_results','sudo mount ${NFS_SERVER_ADDRESS}:${NFS_EXPORT_PATH} /mnt/shared_storage/experiment_results','sudo chmod 777 /mnt/shared_storage/experiment_results']" \
-        docker.run_options='["--ulimit nofile=65536:65536","-v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results"]'
+        docker.run_options='["--ulimit nofile=65536:65536","-v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results"]' \
+        file_mounts='{"/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
 
   script:
     - |
