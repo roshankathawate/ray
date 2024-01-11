@@ -100,6 +100,11 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     help=("Number of GPUs to use for the test."),
 )
 @click.option(
+    "--network",
+    type=str,
+    help="Network to use for the test.",
+)
+@click.option(
     "--test-env",
     multiple=True,
     type=str,
@@ -142,6 +147,11 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     type=click.Choice(["linux", "windows"]),
     help=("Operating system to run tests on"),
 )
+@click.option(
+    "--tmp-filesystem",
+    type=str,
+    help=("Filesystem to use for /tmp"),
+)
 def main(
     targets: List[str],
     team: str,
@@ -155,10 +165,12 @@ def main(
     skip_ray_installation: bool,
     build_only: bool,
     gpus: int,
+    network: Optional[str],
     test_env: Tuple[str],
     test_arg: Optional[str],
     build_name: Optional[str],
     build_type: Optional[str],
+    tmp_filesystem: Optional[str],
 ) -> None:
     if not bazel_workspace_dir:
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
@@ -176,6 +188,8 @@ def main(
         worker_id,
         parallelism_per_worker,
         gpus,
+        network=network,
+        tmp_filesystem=tmp_filesystem,
         test_env=list(test_env),
         build_name=build_name,
         build_type=build_type,
@@ -192,7 +206,7 @@ def main(
         only_tags=only_tags,
         get_flaky_tests=run_flaky_tests,
     )
-    success = container.run_tests(test_targets, test_arg)
+    success = container.run_tests(team, test_targets, test_arg)
     sys.exit(0 if success else 42)
 
 
@@ -210,6 +224,8 @@ def _get_container(
     worker_id: int,
     parallelism_per_worker: int,
     gpus: int,
+    network: Optional[str],
+    tmp_filesystem: Optional[str] = None,
     test_env: Optional[List[str]] = None,
     build_name: Optional[str] = None,
     build_type: Optional[str] = None,
@@ -226,13 +242,16 @@ def _get_container(
             shard_count=shard_count,
             shard_ids=list(range(shard_start, shard_end)),
             gpus=gpus,
+            network=network,
             skip_ray_installation=skip_ray_installation,
             build_type=build_type,
+            tmp_filesystem=tmp_filesystem,
         )
 
     if operating_system == "windows":
         return WindowsTesterContainer(
             build_name or f"{team}build",
+            network=network,
             test_envs=test_env,
             shard_count=shard_count,
             shard_ids=list(range(shard_start, shard_end)),
