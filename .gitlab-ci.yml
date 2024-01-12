@@ -360,7 +360,7 @@ deploy-ray:
         available_node_types.ray.head.default.resources='{"CPU": 2, "Memory": 4096}' \
         initialization_commands="['sudo mkdir -p /mnt/shared_storage/experiment_results','sudo mount ${NFS_SERVER_ADDRESS}:${NFS_EXPORT_PATH} /mnt/shared_storage/experiment_results','sudo chmod 777 /mnt/shared_storage/experiment_results']" \
         docker.run_options='["--ulimit nofile=65536:65536","-v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results"]' \
-        file_mounts='{"/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
+        file_mounts='{"/home/ray/anaconda3/lib/python3.9/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
   script:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
@@ -401,7 +401,7 @@ deploy-single-ray-from-ovf:
         provider.vsphere_config.frozen_vm.library_item=frozen-vm-1 provider.vsphere_config.frozen_vm.datastore=vol1 \
         provider.vsphere_config.frozen_vm.cluster=RegionA01-Compute available_node_types.ray.head.default.node_config.datastore=vol1 \
         available_node_types.worker.node_config.datastore=vol1 \
-        file_mounts='{"/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
+        file_mounts='{"/home/ray/anaconda3/lib/python3.9/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
 
 
   script:
@@ -445,7 +445,7 @@ deploy-multi-ray-from-ovf:
         available_node_types.ray.head.default.node_config.datastore=vol1 available_node_types.worker.node_config.datastore=vol1 \
         provider.vsphere_config.frozen_vm.resource_pool=Multi-Ovf available_node_types.ray.head.default.node_config.resource_pool=Multi-Ovf \
         available_node_types.worker.node_config.resource_pool=Multi-Ovf \
-        file_mounts='{"/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
+        file_mounts='{"/home/ray/anaconda3/lib/python3.9/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
 
   script:
     - |
@@ -485,7 +485,7 @@ functionality-ray-accessibility:
         available_node_types.ray.head.default.resources='{"CPU": 2, "Memory": 4096}' \
         initialization_commands="['sudo mkdir -p /mnt/shared_storage/experiment_results','sudo mount ${NFS_SERVER_ADDRESS}:${NFS_EXPORT_PATH} /mnt/shared_storage/experiment_results','sudo chmod 777 /mnt/shared_storage/experiment_results']" \
         docker.run_options='["--ulimit nofile=65536:65536","-v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results"]' \
-        file_mounts='{"/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
+        file_mounts='{"/home/ray/anaconda3/lib/python3.9/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
   script:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
@@ -524,7 +524,7 @@ functionality-ray-resource-validity:
         available_node_types.ray.head.default.resources='{"CPU": 2, "Memory": 8192}' \
         initialization_commands="['sudo mkdir -p /mnt/shared_storage/experiment_results','sudo mount ${NFS_SERVER_ADDRESS}:${NFS_EXPORT_PATH} /mnt/shared_storage/experiment_results','sudo chmod 777 /mnt/shared_storage/experiment_results']" \
         docker.run_options='["--ulimit nofile=65536:65536","-v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results"]' \
-        file_mounts='{"/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
+        file_mounts='{"/home/ray/anaconda3/lib/python3.9/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
   script:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
@@ -565,7 +565,7 @@ delete-ray:
         available_node_types.ray.head.default.resources='{"CPU": 2, "Memory": 4096}' \
         initialization_commands="['sudo mkdir -p /mnt/shared_storage/experiment_results','sudo mount ${NFS_SERVER_ADDRESS}:${NFS_EXPORT_PATH} /mnt/shared_storage/experiment_results','sudo chmod 777 /mnt/shared_storage/experiment_results']" \
         docker.run_options='["--ulimit nofile=65536:65536","-v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results"]' \
-        file_mounts='{"/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
+        file_mounts='{"/home/ray/anaconda3/lib/python3.9/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
   script:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
@@ -607,7 +607,7 @@ delete-single-ray-from-ovf:
         provider.vsphere_config.frozen_vm.library_item=frozen-vm-1 provider.vsphere_config.frozen_vm.datastore=vol1 \
         provider.vsphere_config.frozen_vm.cluster=RegionA01-Compute available_node_types.ray.head.default.node_config.datastore=vol1 \
         available_node_types.worker.node_config.datastore=vol1 \
-        file_mounts='{"/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
+        file_mounts='{"/home/ray/anaconda3/lib/python3.9/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
 
   script:
     - |
@@ -651,7 +651,7 @@ delete-multi-ray-from-ovf:
         available_node_types.ray.head.default.node_config.datastore=vol1 available_node_types.worker.node_config.datastore=vol1 \
         provider.vsphere_config.frozen_vm.resource_pool=Multi-Ovf available_node_types.ray.head.default.node_config.resource_pool=Multi-Ovf \
         available_node_types.worker.node_config.resource_pool=Multi-Ovf \
-        file_mounts='{"/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
+        file_mounts='{"/home/ray/anaconda3/lib/python3.9/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
 
   script:
     - |
@@ -692,7 +692,7 @@ deploy-GPU-ray:
         available_node_types.ray.head.default.resources='{"CPU": 2, "Memory": 4096}' \
         initialization_commands="['sudo mkdir -p /mnt/shared_storage/experiment_results','sudo mount ${NFS_SERVER_ADDRESS}:${NFS_EXPORT_PATH} /mnt/shared_storage/experiment_results','sudo chmod 777 /mnt/shared_storage/experiment_results']" \
         docker.run_options='["--ulimit nofile=65536:65536","-v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results"]' \
-        file_mounts='{"/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
+        file_mounts='{"/home/ray/anaconda3/lib/python3.9/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
 
   script:
     - |
@@ -732,7 +732,7 @@ functionality-GPU-ray-test:
         available_node_types.ray.head.default.resources='{"CPU": 2, "Memory": 4096}' \
         initialization_commands="['sudo mkdir -p /mnt/shared_storage/experiment_results','sudo mount ${NFS_SERVER_ADDRESS}:${NFS_EXPORT_PATH} /mnt/shared_storage/experiment_results','sudo chmod 777 /mnt/shared_storage/experiment_results']" \
         docker.run_options='["--ulimit nofile=65536:65536","-v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results"]' \
-        file_mounts='{"/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
+        file_mounts='{"/home/ray/anaconda3/lib/python3.9/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
   script:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
@@ -771,7 +771,7 @@ delete-GPU-ray:
         available_node_types.ray.head.default.resources='{"CPU": 2, "Memory": 4096}' \
         initialization_commands="['sudo mkdir -p /mnt/shared_storage/experiment_results','sudo mount ${NFS_SERVER_ADDRESS}:${NFS_EXPORT_PATH} /mnt/shared_storage/experiment_results','sudo chmod 777 /mnt/shared_storage/experiment_results']" \
         docker.run_options='["--ulimit nofile=65536:65536","-v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results"]' \
-        file_mounts='{"/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
+        file_mounts='{"/home/ray/anaconda3/lib/python3.9/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
   script:
     - |
       cat python/ray/autoscaler/vsphere/example-full.yaml
@@ -812,7 +812,7 @@ deploy-dev-ray:
         available_node_types.ray.head.default.resources='{"CPU": 2, "Memory": 4096}' \
         initialization_commands="['sudo mkdir -p /mnt/shared_storage/experiment_results','sudo mount ${NFS_SERVER_ADDRESS}:${NFS_EXPORT_PATH} /mnt/shared_storage/experiment_results','sudo chmod 777 /mnt/shared_storage/experiment_results']" \
         docker.run_options='["--ulimit nofile=65536:65536","-v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results"]' \
-        file_mounts='{"/home/ray/anaconda3/lib/python3.8/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
+        file_mounts='{"/home/ray/anaconda3/lib/python3.9/site-packages/ray/autoscaler": "/builds/xlabs/x77-taiga/ray-oss/python/ray/autoscaler"}'
 
   script:
     - |
