@@ -179,10 +179,6 @@ class PyvmomiSdkProvider:
         if cached_obj:
             return cached_obj
 
-        cached_obj = self.get_obj_from_cache(vimtype, name, obj_id)
-        if cached_obj:
-            return cached_obj
-
         container = self.pyvmomi_sdk_client.content.viewManager.CreateContainerView(
             self.pyvmomi_sdk_client.content.rootFolder, vimtype, True
         )
@@ -359,3 +355,14 @@ class PyvmomiSdkProvider:
         source_vm = self.get_pyvmomi_obj([vim.VirtualMachine], source_vm_name)
         WaitForTask(source_vm.InstantClone_Task(spec=instant_clone_spec))
         logger.info(f"Clone VM {target_vm_name} from Frozen-VM {source_vm_name}")
+
+    def fetch_vc_version(self):
+        return self.pyvmomi_sdk_client.content.about.version
+
+    def fetch_esx_versions_by_resource_pool_name(self, resource_pool_name):
+        resource_pool_obj = self.get_pyvmomi_obj([vim.ResourcePool], resource_pool_name)
+        # cluster obj is always the grandparent of a resource pool
+        cluster_obj = resource_pool_obj.parent.parent
+        host_objs = cluster_obj.host
+        c_infos = [host_obj.QueryHostConnectionInfo() for host_obj in host_objs]
+        return [c_info.host.config.product.version for c_info in c_infos]
