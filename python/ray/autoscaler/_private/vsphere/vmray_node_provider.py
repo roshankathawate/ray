@@ -1,12 +1,10 @@
 import logging
-import threading
 from typing import Any, Dict
 
 from ray.autoscaler._private.vsphere.cluster_operator_client import (
     ClusterOperatorClient,
 )
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
 
 logger = logging.getLogger(__name__)
 

@@ -66,6 +66,7 @@ def _import_vsphere(provider_config):
 
     return VsphereNodeProvider
 
+
 def _import_vmray(provider_config):
     from ray.autoscaler._private.vsphere.vmray_node_provider import VmRayNodeProvider
 
@@ -161,6 +162,7 @@ def _load_vsphere_defaults_config():
     import ray.autoscaler.vsphere as ray_vsphere
 
     return os.path.join(os.path.dirname(ray_vsphere.__file__), "defaults.yaml")
+
 
 def _load_vmray_defaults_config():
     import ray.autoscaler.vsphere as ray_vsphere
