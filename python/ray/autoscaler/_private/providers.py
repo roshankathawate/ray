@@ -198,8 +198,7 @@ _NODE_PROVIDERS = {
     "readonly": _import_readonly,
     "aws": _import_aws,
     "gcp": _import_gcp,
-    "vmray": _import_vmray,
-    "vsphere": _import_vsphere,
+    "vsphere": _import_vmray,
     "azure": _import_azure,
     "kubernetes": _import_kubernetes,
     "kuberay": _import_kuberay,
@@ -220,8 +219,7 @@ _PROVIDER_PRETTY_NAMES = {
     "kuberay": "KubeRay",
     "aliyun": "Aliyun",
     "external": "External",
-    "vsphere": "vSphere",
-    "vmray": "VmRay"
+    "vsphere": "vSphere"
 }
 
 _DEFAULT_CONFIGS = {
@@ -232,8 +230,7 @@ _DEFAULT_CONFIGS = {
     "azure": _load_azure_defaults_config,
     "aliyun": _load_aliyun_defaults_config,
     "kubernetes": _load_kubernetes_defaults_config,
-    "vsphere": _load_vsphere_defaults_config,
-    "vmray": _load_vmray_defaults_config,
+    "vsphere": _load_vmray_defaults_config
 }
 
 
