@@ -219,7 +219,7 @@ _PROVIDER_PRETTY_NAMES = {
     "kuberay": "KubeRay",
     "aliyun": "Aliyun",
     "external": "External",
-    "vsphere": "vSphere"
+    "vsphere": "vSphere",
 }
 
 _DEFAULT_CONFIGS = {
@@ -230,7 +230,7 @@ _DEFAULT_CONFIGS = {
     "azure": _load_azure_defaults_config,
     "aliyun": _load_aliyun_defaults_config,
     "kubernetes": _load_kubernetes_defaults_config,
-    "vsphere": _load_vmray_defaults_config
+    "vsphere": _load_vmray_defaults_config,
 }
 
 
