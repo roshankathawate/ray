@@ -146,7 +146,7 @@ class ClusterOperatorClient(IKubernetesHttpApiClient):
             os.getenv("SERVICE_ACCOUNT_TOKEN", None) is not None
         ), "To use vSphereNodeProvider, must set SERVICE_ACCOUNT_TOKEN env variable."
 
-        self.k8s_api_client = KubernetesHttpApiClient(
+        self.k8s_api_client = IKubernetesHttpApiClient(
             self.namespace,
             self.supervisor_cluster_config.get("ca_cert"),
             self.supervisor_cluster_config.get("api_server"),
@@ -160,7 +160,7 @@ class ClusterOperatorClient(IKubernetesHttpApiClient):
         with self.lock:
             logger.debug(f"Tag filter is {tag_filters}")
             nodes = []  # list of VM IDs
-            vmray_cluster_status = self._get("vmraycluster/status")
+            vmray_cluster_status = self._get("vmrayclusters/status")
             if NODE_KIND_HEAD in tag_filters.values():
                 head_node_status = vmray_cluster_status.get("head_node_status", None)
                 # head node is found
@@ -213,13 +213,13 @@ class ClusterOperatorClient(IKubernetesHttpApiClient):
         """Remove name of the vm from the desired worker list and patch
         the VmRayCluster CR"""
         with self.lock:
-            vmray_cluster_spec = self._get("vmraycluster/spec")
+            vmray_cluster_spec = self._get("vmrayclusters/spec")
             # get desired workers
-            current_workers = set(vmray_cluster_spec.get("desired_workers"))
-            new_desired_workers = current_workers.copy()
+            current_desired_workers = set(vmray_cluster_spec.get("desired_workers"))
+            new_desired_workers = current_desired_workers.copy()
             # remove the node from the desired workers list
             new_desired_workers.discard(nodeId)
-            if len(new_desired_workers) < len(current_workers):
+            if len(new_desired_workers) < len(current_desired_workers):
                 logger.info("Deleting VM {}".format(nodeId))
                 path = "vmraycluster"
                 payload = {
@@ -248,7 +248,7 @@ class ClusterOperatorClient(IKubernetesHttpApiClient):
                     for _ in range(to_be_launched_node_count)
                 ]
                 logger.info("Creating new VMs {new_vm_names}")
-                vmray_cluster_spec = self._get("vmraycluster/spec")
+                vmray_cluster_spec = self._get("vmrayclusters/spec")
                 # get desired workers
                 current_workers = vmray_cluster_spec.get("desired_workers")
                 # append new VM names with existing one
@@ -264,7 +264,7 @@ class ClusterOperatorClient(IKubernetesHttpApiClient):
                 self._patch(path, payload)
 
     def _get_node(self, nodeId: str) -> Any:
-        vmray_cluster_status = self._get("vmraycluster/status")
+        vmray_cluster_status = self._get("vmrayclusters/status")
         head_node_status = vmray_cluster_status.get("head_node_status", None)
         # head node is found
         if head_node_status and head_node_status.get("name") == nodeId:
