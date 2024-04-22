@@ -215,13 +215,10 @@ class ClusterOperatorClient(IKubernetesHttpApiClient):
         with self.lock:
             vmray_cluster_spec = self._get("vmraycluster/spec")
             # get desired workers
-            current_workers = vmray_cluster_spec.get("desired_workers")
-            new_desired_workers = []
-            # new desired state will have all workers except
-            # the provided one
-            for worker in current_workers:
-                if worker.get("name") != nodeId:
-                    new_desired_workers.append(worker)
+            current_workers = set(vmray_cluster_spec.get("desired_workers"))
+            new_desired_workers = current_workers.copy()
+            # remove the node from the desired workers list
+            new_desired_workers.discard(nodeId)
             if len(new_desired_workers) < len(current_workers):
                 logger.info("Deleting VM {}".format(nodeId))
                 path = "vmraycluster"
