@@ -198,7 +198,7 @@ class ClusterOperatorClient(IKubernetesHttpApiClient):
         """
         pass
 
-    def get_vm_external_ip(self, nodeId: str) -> str | None:
+    def get_vm_external_ip(self, nodeId: str) -> Optional[str]:
         """Check current worker list and get the external ip."""
         with self.lock:
             node = self._get_node(nodeId)
