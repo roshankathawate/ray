@@ -146,7 +146,7 @@ class ClusterOperatorClient(IKubernetesHttpApiClient):
             os.getenv("SERVICE_ACCOUNT_TOKEN", None) is not None
         ), "To use vSphereNodeProvider, must set SERVICE_ACCOUNT_TOKEN env variable."
 
-        self.k8s_api_client = IKubernetesHttpApiClient(
+        self.k8s_api_client = KubernetesHttpApiClient(
             self.namespace,
             self.supervisor_cluster_config.get("ca_cert"),
             self.supervisor_cluster_config.get("api_server"),
