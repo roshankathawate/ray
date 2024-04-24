@@ -22,7 +22,7 @@ from ray.autoscaler.tags import NODE_KIND_HEAD, NODE_KIND_WORKER, TAG_RAY_NODE_N
 # VMRay CRD version
 VMRAY_CRD_VER = os.getenv("VMRAY_CRD_VER", "v1alpha1")
 
-SERVICE_ACCOUNT_TOKEN = os.getenv("SERVICE_ACCOUNT_TOKEN")
+SERVICE_ACCOUNT_TOKEN = os.getenv("SVC_ACCOUNT_TOKEN")
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ def url_from_resource(api_server: str, namespace: str, path: str) -> str:
         api_group = "/apis/vmray.broadcom.com/" + VMRAY_CRD_VER
     else:
         raise NotImplementedError("Tried to access unknown entity at {}".format(path))
-    return api_server + api_group + "/namespaces/" + namespace + "/" + path
+    return "https://" + api_server + api_group + "/namespaces/" + namespace + "/" + path
 
 
 class VMNodeStatus(Enum):
@@ -72,7 +72,7 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
         self._api_server = api_server
         self._namespace = namespace
 
-        token = os.getenv("SERVICE_ACCOUNT_TOKEN")
+        token = SERVICE_ACCOUNT_TOKEN
 
         headers = {
             "Authorization": "Bearer " + token,
@@ -97,7 +97,7 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
             namespace=self._namespace,
             path=path,
         )
-        result = requests.get(url, headers=self._headers, verify=self._verify)
+        result = requests.get(url, headers=self._headers, verify=False)
         if not result.status_code == 200:
             result.raise_for_status()
         return result.json()
@@ -124,7 +124,7 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
             url,
             json.dumps(payload),
             headers={**self._headers, "Content-type": "application/json-patch+json"},
-            verify=self._verify,
+            verify=False,
         )
         if not result.status_code == 200:
             result.raise_for_status()
@@ -132,8 +132,8 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
 
 
 class ClusterOperatorClient(KubernetesHttpApiClient):
-    def __init__(self, provider_config: Dict[str, Any]):
-        self.cluster_name = provider_config["cluster_name"]
+    def __init__(self,cluster_name:str, provider_config: Dict[str, Any]):
+        self.cluster_name = cluster_name
         self.supervisor_cluster_config = provider_config["vsphere_config"]
         self.namespace = self.supervisor_cluster_config["user_namespace"]
         assert (
@@ -154,7 +154,10 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         with self.lock:
             logger.debug(f"Tag filter is {tag_filters}")
             nodes = []  # list of VM IDs
-            vmray_cluster_status = self._get("vmrayclusters/status")
+            vmray_cluster_response = self._get_cluster_response()
+            vmray_cluster_status = vmray_cluster_response.get("status")
+            if not vmray_cluster_status:
+                return nodes
             if NODE_KIND_HEAD in tag_filters.values():
                 head_node_status = vmray_cluster_status.get("head_node_status", None)
                 # head node is found
@@ -163,8 +166,8 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             if NODE_KIND_WORKER in tag_filters.values():
                 current_workers = vmray_cluster_status.get("current_workers", None)
                 # worker nodes found
-                for worker in current_workers:
-                    nodes.append(worker.get("name"))
+                for worker in current_workers.keys():
+                    nodes.append(worker)
             logger.debug(f"Non terminated nodes are {nodes}")
             return nodes
 
@@ -207,7 +210,8 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         """Remove name of the vm from the desired worker list and patch
         the VmRayCluster CR"""
         with self.lock:
-            vmray_cluster_spec = self._get("vmrayclusters/spec")
+            vmray_cluster_response = self._get_cluster_response()
+            vmray_cluster_spec = vmray_cluster_response.get("spec")
             # get desired workers
             current_desired_workers = set(vmray_cluster_spec.get("desired_workers"))
             new_desired_workers = current_desired_workers.copy()
@@ -215,7 +219,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             new_desired_workers.discard(nodeId)
             if len(new_desired_workers) < len(current_desired_workers):
                 logger.info("Deleting VM {}".format(nodeId))
-                path = "vmraycluster"
+                path = f"vmrayclusters/{self.cluster_name}"
                 payload = {
                     "path": "spec/VMRayClusterSpec",
                     "value": {"desired_workers": new_desired_workers},
@@ -242,7 +246,8 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                     for _ in range(to_be_launched_node_count)
                 ]
                 logger.info("Creating new VMs {new_vm_names}")
-                vmray_cluster_spec = self._get("vmrayclusters/spec")
+                vmray_cluster_reponse = self._get_cluster_response()
+                vmray_cluster_spec = vmray_cluster_reponse.get("spec")
                 # get desired workers
                 current_workers = vmray_cluster_spec.get("desired_workers")
                 # append new VM names with existing one
@@ -250,25 +255,32 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                     current_workers,
                 )
                 new_desired_workers.extend(new_vm_names)
-                path = "vmraycluster"
+                path = f"vmrayclusters/{self.cluster_name}"
                 payload = {
                     "path": "spec/VMRayClusterSpec",
-                    "value": {"desired_workers": new_desired_workers},
+                    "value": {"desired_workers": new_desired_workers}
                 }
                 self._patch(path, payload)
+    
+    def _get_cluster_response(self):
+        with self.lock:
+            return self._get(f"vmrayclusters/{self.cluster_name}")
 
     def _get_node(self, nodeId: str) -> Any:
-        vmray_cluster_status = self._get("vmrayclusters/status")
+        vmray_cluster_response = self._get_cluster_response()
+        vmray_cluster_status = vmray_cluster_response.get("status")
+        if not vmray_cluster_status:
+            return None
         head_node_status = vmray_cluster_status.get("head_node_status", None)
         # head node is found
         if head_node_status and head_node_status.get("name") == nodeId:
             return head_node_status
         current_workers = vmray_cluster_status.get("current_workers", None)
         # worker nodes found
-        for worker in current_workers:
-            if worker.get("name") == nodeId:
-                return worker
-        logger.warning(f"VM {nodeId} is not found")
+        for worker in current_workers.keys():
+            if worker == nodeId:
+                return current_workers.get(worker)
+        logger.warning(f"VM {nodeId} not found")
 
         return None
 
@@ -279,3 +291,4 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
     def _patch(self, path: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Wrapper for REST PATCH of resource with proper headers."""
         return self.k8s_api_client.patch(path, payload)
+    

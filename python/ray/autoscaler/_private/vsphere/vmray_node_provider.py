@@ -21,7 +21,7 @@ class VmRayNodeProvider(NodeProvider):
         return cluster_config
 
     def non_terminated_nodes(self, tag_filters):
-        return self.client.list_vms(self.cluster_name, tag_filters)
+        return self.client.list_vms(tag_filters)
 
     def is_running(self, node_id):
         return self.client.is_vm_power_on(node_id)
