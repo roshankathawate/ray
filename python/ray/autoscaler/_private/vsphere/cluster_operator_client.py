@@ -137,8 +137,8 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         self.supervisor_cluster_config = provider_config["vsphere_config"]
         self.namespace = self.supervisor_cluster_config["user_namespace"]
         assert (
-            os.getenv("SERVICE_ACCOUNT_TOKEN", None) is not None
-        ), "To use vSphereNodeProvider, must set SERVICE_ACCOUNT_TOKEN env variable."
+            SERVICE_ACCOUNT_TOKEN is not None
+        ), "To use vSphereNodeProvider, must set SVC_ACCOUNT_TOKEN env variable."
 
         self.k8s_api_client = KubernetesHttpApiClient(
             self.namespace,
