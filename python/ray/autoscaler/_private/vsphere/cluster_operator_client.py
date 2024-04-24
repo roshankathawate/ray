@@ -22,9 +22,6 @@ from ray.autoscaler.tags import NODE_KIND_HEAD, NODE_KIND_WORKER, TAG_RAY_NODE_N
 # VMRay CRD version
 VMRAY_CRD_VER = os.getenv("VMRAY_CRD_VER", "v1alpha1")
 
-# VirtualMachine CRD version
-VM_CRD_VER = os.getenv("VM_CRD_VER", "v1")
-
 SERVICE_ACCOUNT_TOKEN = os.getenv("SERVICE_ACCOUNT_TOKEN")
 
 logger = logging.getLogger(__name__)
@@ -38,9 +35,7 @@ def url_from_resource(api_server: str, namespace: str, path: str) -> str:
         path: The part of the resource path that starts with the resource type.
             Supported resource types are "vms" and "rayclusters".
     """
-    if path.startswith("virtualmachine"):
-        api_group = "/api/" + VM_CRD_VER
-    elif path.startswith("vmraycluster"):
+    if path.startswith("vmrayclusters"):
         api_group = "/apis/vmray.broadcom.com/" + VMRAY_CRD_VER
     else:
         raise NotImplementedError("Tried to access unknown entity at {}".format(path))
@@ -136,11 +131,10 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
         return result.json()
 
 
-class ClusterOperatorClient(IKubernetesHttpApiClient):
+class ClusterOperatorClient(KubernetesHttpApiClient):
     def __init__(self, provider_config: Dict[str, Any]):
-        logger.info("Creating Cluster Operator Client.")
         self.cluster_name = provider_config["cluster_name"]
-        self.supervisor_cluster_config = provider_config["supervisor_cluster"]
+        self.supervisor_cluster_config = provider_config["vsphere_config"]
         self.namespace = self.supervisor_cluster_config["user_namespace"]
         assert (
             os.getenv("SERVICE_ACCOUNT_TOKEN", None) is not None
@@ -231,7 +225,7 @@ class ClusterOperatorClient(IKubernetesHttpApiClient):
     def create_nodes(
         self,
         node_config: Dict[str, Any],
-        tags: dict[str, str],
+        tags: Dict[str, str],
         to_be_launched_node_count: int,
     ) -> Optional[Dict[str, Any]]:
         """Ask cluster operator to create worker VMs"""
