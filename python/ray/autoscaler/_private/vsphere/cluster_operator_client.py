@@ -135,7 +135,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
     def __init__(self,cluster_name:str, provider_config: Dict[str, Any]):
         self.cluster_name = cluster_name
         self.supervisor_cluster_config = provider_config["vsphere_config"]
-        self.namespace = self.supervisor_cluster_config["user_namespace"]
+        self.namespace = self.supervisor_cluster_config["namespace"]
         assert (
             SERVICE_ACCOUNT_TOKEN is not None
         ), "To use vSphereNodeProvider, must set SVC_ACCOUNT_TOKEN env variable."
@@ -162,7 +162,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 head_node_status = vmray_cluster_status.get("head_node_status", None)
                 # head node is found
                 if head_node_status:
-                    nodes.append(head_node_status.get("name"))
+                    nodes.append(self.cluster_name+"-head")
             if NODE_KIND_WORKER in tag_filters.values():
                 current_workers = vmray_cluster_status.get("current_workers", None)
                 # worker nodes found
@@ -236,15 +236,18 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         with self.lock:
             if to_be_launched_node_count > 0:
                 new_desired_workers = []
+                new_vm_names = []
                 # The nodes are named as follows:
-                # <cluster-name>-head-<uuid> for the head node
+                # <cluster-name>-head for the head node
                 # <cluster-name>-worker-<uuid> for the worker nodes
-                new_vm_names = [
-                    "{}_{}_{}".format(
-                        self.cluster_name, tags[TAG_RAY_NODE_NAME], str(uuid.uuid4())
-                    )
-                    for _ in range(to_be_launched_node_count)
-                ]
+                #TODO: DO we need to handle head node creation through the autoscaler?
+                if "head" in tags[TAG_RAY_NODE_NAME]:
+                    new_vm_names = [f"{self.cluster_name}-head"]
+                else:
+                    new_vm_names = [
+                        f"{self.cluster_name}-worker-{str(uuid.uuid4())}"
+                        for _ in range(to_be_launched_node_count)
+                    ]
                 logger.info("Creating new VMs {new_vm_names}")
                 vmray_cluster_reponse = self._get_cluster_response()
                 vmray_cluster_spec = vmray_cluster_reponse.get("spec")
@@ -273,7 +276,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             return None
         head_node_status = vmray_cluster_status.get("head_node_status", None)
         # head node is found
-        if head_node_status and head_node_status.get("name") == nodeId:
+        if head_node_status and nodeId == self.cluster_name+"-head":
             return head_node_status
         current_workers = vmray_cluster_status.get("current_workers", None)
         # worker nodes found
