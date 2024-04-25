@@ -159,11 +159,13 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             if not vmray_cluster_status:
                 return nodes
             if NODE_KIND_HEAD in tag_filters.values():
+                logger.debug(f"Getting head node")
                 head_node_status = vmray_cluster_status.get("head_node_status", None)
                 # head node is found
                 if head_node_status:
                     nodes.append(self.cluster_name+"-head")
             if NODE_KIND_WORKER in tag_filters.values():
+                logger.debug(f"Getting worker node")
                 current_workers = vmray_cluster_status.get("current_workers", None)
                 # worker nodes found
                 for worker in current_workers.keys():
@@ -178,6 +180,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             node = self._get_node(nodeId)
             if node:
                 return node.get("vm_status") == VMNodeStatus.RUNNING.value
+            logger.info(f"VM {nodeId} is not in running status")
             return False
 
     def is_vm_creating(self, nodeId: str) -> bool:
@@ -187,6 +190,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             node = self._get_node(nodeId)
             if node:
                 return node.get("vm_status") == VMNodeStatus.INITIALIZED.value
+            logger.info(f"VM {nodeId} is not in initialized status")
             return False
 
     def set_node_tags(self, tags: Dict[str, str]) -> None:
@@ -221,8 +225,9 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 logger.info("Deleting VM {}".format(nodeId))
                 path = f"vmrayclusters/{self.cluster_name}"
                 payload = {
-                    "path": "spec/VMRayClusterSpec",
-                    "value": {"desired_workers": new_desired_workers},
+                    "spec":{
+                        "desired_workers": new_desired_workers
+                        }
                 }
                 self._patch(path, payload)
 
@@ -233,6 +238,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         to_be_launched_node_count: int,
     ) -> Optional[Dict[str, Any]]:
         """Ask cluster operator to create worker VMs"""
+        logger.debug(f"Creating {to_be_launched_node_count} nodes.")
         with self.lock:
             if to_be_launched_node_count > 0:
                 new_desired_workers = []
@@ -253,15 +259,18 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 vmray_cluster_spec = vmray_cluster_reponse.get("spec")
                 # get desired workers
                 current_workers = vmray_cluster_spec.get("desired_workers")
+                logger.info(f"Current desired state: {current_workers}")
                 # append new VM names with existing one
                 new_desired_workers.extend(
                     current_workers,
                 )
                 new_desired_workers.extend(new_vm_names)
+                logger.info(f"New desired state: {current_workers}")
                 path = f"vmrayclusters/{self.cluster_name}"
                 payload = {
-                    "path": "spec/VMRayClusterSpec",
-                    "value": {"desired_workers": new_desired_workers}
+                    "spec":{
+                        "desired_workers": new_desired_workers
+                        }
                 }
                 self._patch(path, payload)
     
