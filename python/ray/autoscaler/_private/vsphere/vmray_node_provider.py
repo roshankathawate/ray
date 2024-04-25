@@ -14,7 +14,7 @@ class VmRayNodeProvider(NodeProvider):
 
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
-        self.client = ClusterOperatorClient(self.provider_config)
+        self.client = ClusterOperatorClient(cluster_name, self.provider_config)
 
     @staticmethod
     def bootstrap_config(cluster_config):
