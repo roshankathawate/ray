@@ -207,6 +207,8 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 vmray_cluster_spec = vmray_cluster_response.get("spec")
                 desired_workers = vmray_cluster_spec.get("desired_workers", [])
                 for worker in desired_workers:
+                    if worker in current_workers.keys():
+                        continue
                     nodes.append(worker)
                     filters[TAG_RAY_NODE_STATUS] = STATUS_SETTING_UP
                     tag_cache[worker] = filters
