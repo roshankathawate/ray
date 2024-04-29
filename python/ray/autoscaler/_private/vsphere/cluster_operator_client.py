@@ -158,9 +158,8 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             filters = tag_filters.copy()
             if TAG_RAY_CLUSTER_NAME not in tag_filters:
                 filters[TAG_RAY_CLUSTER_NAME] = self.cluster_name
-            logger.debug(f"Tag filter is {tag_filters}")
             nodes = []  # list of VM IDs
-            print(f"tag filters are {tag_filters}")
+            logger.info(f"tag filters are {tag_filters}")
             vmray_cluster_response = None
             try:
                 vmray_cluster_response = self._get_cluster_response()
@@ -172,37 +171,39 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             vmray_cluster_status = vmray_cluster_response.get("status")
             if not vmray_cluster_status:
                 return nodes
-            if NODE_KIND_HEAD in tag_filters.values():
-                logger.debug(f"Getting head node")
+            if NODE_KIND_HEAD in tag_filters.values() or not tag_filters:
+                logger.info(f"Getting head node")
                 head_node_status = vmray_cluster_status.get("head_node_status", None)
                 # head node is found
                 if head_node_status:
                     nodeId = self.cluster_name+"-head"
                     nodes.append(nodeId)
+                    new_filters = filters.copy()
                     # Setting head node status
                     status = head_node_status.get("vm_status", None)
                     if status and status == VMNodeStatus.RUNNING.value:
-                        filters[TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
+                        new_filters[TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
                     elif status and status == VMNodeStatus.INITIALIZED.value:
-                        filters[TAG_RAY_NODE_STATUS] = STATUS_SETTING_UP
+                        new_filters[TAG_RAY_NODE_STATUS] = STATUS_SETTING_UP
                     else:
-                        filters[TAG_RAY_NODE_STATUS] = STATUS_UNINITIALIZED
-                    tag_cache[nodeId] = filters
-            if NODE_KIND_WORKER in tag_filters.values():
-                logger.debug(f"Getting worker node")
+                        new_filters[TAG_RAY_NODE_STATUS] = STATUS_UNINITIALIZED
+                    tag_cache[nodeId] = new_filters
+            if NODE_KIND_WORKER in tag_filters.values() or not tag_filters:
+                logger.info(f"Getting worker nodes")
                 current_workers = vmray_cluster_status.get("current_workers", None)
                 # worker nodes found
                 for worker in current_workers.keys():
                     nodes.append(worker)
+                    new_filters = filters.copy()
                     # setting worker node status
                     status = worker.get("vm_status", None)
                     if status and status == VMNodeStatus.RUNNING.value:
-                        filters[TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
+                        new_filters[TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
                     elif status and status == VMNodeStatus.INITIALIZED.value:
-                        filters[TAG_RAY_NODE_STATUS] = STATUS_SETTING_UP
+                        new_filters[TAG_RAY_NODE_STATUS] = STATUS_SETTING_UP
                     else:
-                        filters[TAG_RAY_NODE_STATUS] = STATUS_UNINITIALIZED
-                    tag_cache[worker] = filters
+                        new_filters[TAG_RAY_NODE_STATUS] = STATUS_UNINITIALIZED
+                    tag_cache[worker] = new_filters
                 # List VMs from the desired workers' list
                 vmray_cluster_spec = vmray_cluster_response.get("spec")
                 desired_workers = vmray_cluster_spec.get("desired_workers", [])
@@ -210,8 +211,9 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                     if worker in current_workers.keys():
                         continue
                     nodes.append(worker)
-                    filters[TAG_RAY_NODE_STATUS] = STATUS_SETTING_UP
-                    tag_cache[worker] = filters
+                    new_filters = filters.copy()
+                    new_filters[TAG_RAY_NODE_STATUS] = STATUS_SETTING_UP
+                    tag_cache[worker] = new_filters
 
             logger.info(f"Non terminated nodes are {nodes}")
             return nodes, tag_cache
@@ -287,7 +289,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         to_be_launched_node_count: int,
     ) -> Optional[Dict[str, Any]]:
         """Ask cluster operator to create worker VMs"""
-        logger.debug(f"Creating {to_be_launched_node_count} nodes.")
+        logger.info(f"Creating {to_be_launched_node_count} nodes.")
         created_nodes_dict={}
         with self.lock:
             if to_be_launched_node_count > 0:
