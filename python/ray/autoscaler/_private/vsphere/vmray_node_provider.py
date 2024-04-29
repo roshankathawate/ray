@@ -1,10 +1,12 @@
 import logging
+import threading
 from typing import Any, Dict
 
 from ray.autoscaler._private.vsphere.cluster_operator_client import (
     ClusterOperatorClient,
 )
 from ray.autoscaler.node_provider import NodeProvider
+from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, STATUS_UP_TO_DATE
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +16,8 @@ class VmRayNodeProvider(NodeProvider):
 
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
+        self.tag_cache = {}
+        self.tag_cache_lock = threading.Lock()
         self.client = ClusterOperatorClient(cluster_name, self.provider_config)
 
     @staticmethod
@@ -21,12 +25,19 @@ class VmRayNodeProvider(NodeProvider):
         return cluster_config
 
     def non_terminated_nodes(self, tag_filters):
-        return self.client.list_vms(tag_filters)
-
+        logger.info(f"non_terminated_nodes: {tag_filters}")
+        nodes, tag_cache = self.client.list_vms( tag_filters)
+        with self.tag_cache_lock:
+            self.tag_cache.update(tag_cache)
+        logger.info(f"non_terminated_nodes: {nodes}, {self.tag_cache}")
+        return nodes
+    
     def is_running(self, node_id):
+        logger.info(f"is_running: {node_id}")
         return self.client.is_vm_power_on(node_id)
 
     def is_terminated(self, node_id):
+        logger.info(f"is_terminated: {node_id}")
         if self.client.is_vm_power_on(node_id):
             return False
         else:
@@ -36,21 +47,30 @@ class VmRayNodeProvider(NodeProvider):
             return not self.client.is_vm_creating(node_id)
 
     def node_tags(self, node_id):
+        logger.info(f"node_tags: {node_id}")
         with self.tag_cache_lock:
+            logger.info(f"node_tags: {self.tag_cache[node_id]}")
             return self.tag_cache[node_id]
 
     def external_ip(self, node_id):
+        logger.info(f"external_ip: {node_id}")
         return self.client.get_vm_external_ip(node_id)
 
     def internal_ip(self, node_id):
         # Currently vSphere VMs do not show an internal IP. So we just return the
         # external IP
+        logger.info(f"internal_ip: {node_id}")
         return self.client.get_vm_external_ip(node_id)
 
     def set_node_tags(self, node_id, tags):
         # This method gets called from the Ray and it passes
-        # node_id which needs to be vm.vm and not vm.name
-        self.client.set_node_tags(node_id, tags)
+        # node_id. It updates old tags (if present) with new values.
+        logger.info(f"set_node_tags: {node_id}, {tags}")
+        with self.tag_cache_lock:
+            for k, v in tags.items():
+                    # update tags for node_id
+                    self.tag_cache[node_id][k] = v
+            logger.info(f"Updated tags for {node_id} to: {self.tag_cache[node_id]}")
 
     def create_node(self, node_config, tags, count) -> Dict[str, Any]:
         """Creates instances.
@@ -59,7 +79,7 @@ class VmRayNodeProvider(NodeProvider):
         instances.
         """
         to_be_launched_node_count = count
-
+        logger.info("create_node:")
         logger.info(f"Create {count} node with tags : {tags}")
 
         created_nodes_dict = {}
@@ -67,14 +87,22 @@ class VmRayNodeProvider(NodeProvider):
             created_nodes_dict = self.client.create_nodes(
                 node_config, tags, to_be_launched_node_count
             )
-
+        # make sure to mark newly created nodes as ready
+        # so autoscaler shouldn't provision new ones
+        with self.tag_cache_lock:
+            for node_id in created_nodes_dict.keys():
+                self.tag_cache[node_id] = tags
+                self.tag_cache[node_id][TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
+                
         return created_nodes_dict
 
     def terminate_node(self, node_id):
         if node_id is None:
             return
-
         self.client.delete_node(node_id)
+        with self.tag_cache_lock:
+            if node_id in self.tag_cache:
+                self.tag_cache.pop(node_id)
 
     def terminate_nodes(self, node_ids):
         if not node_ids:
