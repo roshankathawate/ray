@@ -203,6 +203,14 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                     else:
                         filters[TAG_RAY_NODE_STATUS] = STATUS_UNINITIALIZED
                     tag_cache[worker] = filters
+                # List VMs from the desired workers' list
+                vmray_cluster_spec = vmray_cluster_response.get("spec")
+                desired_workers = vmray_cluster_spec.get("desired_workers", [])
+                for worker in desired_workers:
+                    nodes.append(worker)
+                    filters[TAG_RAY_NODE_STATUS] = STATUS_SETTING_UP
+                    tag_cache[worker] = filters
+
             logger.info(f"Non terminated nodes are {nodes}")
             return nodes, tag_cache
 
@@ -214,7 +222,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             if node:
                 logger.info(f"{nodeId}: {node}")
                 return node.get("vm_status") == VMNodeStatus.RUNNING.value
-            logger.info(f"VM {nodeId} is not in running status")
+            logger.info(f"VM {nodeId} not found")
             return False
 
     def is_vm_creating(self, nodeId: str) -> bool:
@@ -239,8 +247,8 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         with self.lock:
             node = self._get_node(nodeId)
             if node and node.get("vm_status") == VMNodeStatus.RUNNING.value:
-                ip = node.get("ip")
-                if is_ipv4(ip):
+                ip = node.get("ip", None)
+                if ip and is_ipv4(ip):
                     logger.info(f"external IP is for {nodeId} is {ip}")
                     return ip
             logger.warning(f"External IPv4 address of VM {nodeId} is not available")
@@ -339,6 +347,17 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         for worker in current_workers.keys():
             if worker == nodeId:
                 return current_workers.get(worker)
+        # If worker not found in the current worker then it might be getting created
+        # and not yet ready. So check if it is in the desired workers list.
+        vmray_cluster_spec = vmray_cluster_response.get("spec")
+        desired_workers = vmray_cluster_spec.get("desired_workers", [])
+        #TODO: Make a function to get the node from current or desired workers.
+        for worker in desired_workers:
+            if worker == nodeId:
+                # set vm_status as VM in the desired workers' list will not 
+                # have vm_status field.
+                node = {"vm_status": VMNodeStatus.INITIALIZED.value}
+                return node
         logger.warning(f"VM {nodeId} not found")
 
         return None
