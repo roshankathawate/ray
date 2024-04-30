@@ -6,7 +6,8 @@ from ray.autoscaler._private.vsphere.cluster_operator_client import (
     ClusterOperatorClient,
 )
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, STATUS_UP_TO_DATE
+from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, STATUS_UP_TO_DATE, \
+TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,8 @@ class VmRayNodeProvider(NodeProvider):
             for node_id in created_nodes_dict.keys():
                 self.tag_cache[node_id] = tags
                 self.tag_cache[node_id][TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
+                self.tag_cache[node_id][TAG_RAY_NODE_NAME] = node_id
+                self.tag_cache[node_id][TAG_RAY_CLUSTER_NAME] = self.cluster_name
                 
         return created_nodes_dict
 

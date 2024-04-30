@@ -12,7 +12,8 @@ import requests
 from ray.autoscaler._private.vsphere.utils import is_ipv4
 from ray.autoscaler.tags import NODE_KIND_HEAD, NODE_KIND_WORKER, \
 TAG_RAY_NODE_NAME, TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_STATUS, \
-STATUS_UP_TO_DATE, STATUS_SETTING_UP,STATUS_UNINITIALIZED
+STATUS_UP_TO_DATE, STATUS_SETTING_UP,STATUS_UNINITIALIZED, \
+TAG_RAY_NODE_KIND
 
 # Design:
 
@@ -181,13 +182,16 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                     new_filters = filters.copy()
                     # Setting head node status
                     status = head_node_status.get("vm_status", None)
-                    if status and status == VMNodeStatus.RUNNING.value:
+                    if status == VMNodeStatus.RUNNING.value:
                         new_filters[TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
-                    elif status and status == VMNodeStatus.INITIALIZED.value:
+                    elif status == VMNodeStatus.INITIALIZED.value:
                         new_filters[TAG_RAY_NODE_STATUS] = STATUS_SETTING_UP
                     else:
                         new_filters[TAG_RAY_NODE_STATUS] = STATUS_UNINITIALIZED
                     tag_cache[nodeId] = new_filters
+                    if not tag_filters:
+                        tag_cache[nodeId][TAG_RAY_NODE_NAME] = nodeId
+                        tag_cache[nodeId][TAG_RAY_NODE_KIND] = NODE_KIND_HEAD
             if NODE_KIND_WORKER in tag_filters.values() or not tag_filters:
                 logger.info(f"Getting worker nodes")
                 current_workers = vmray_cluster_status.get("current_workers", {})
@@ -197,15 +201,15 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                     new_filters = filters.copy()
                     # setting worker node status
                     status = worker.get("vm_status", None)
-                    if status and status == VMNodeStatus.RUNNING.value:
+                    if status == VMNodeStatus.RUNNING.value:
                         new_filters[TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
-                    elif status and status == VMNodeStatus.INITIALIZED.value:
+                    elif status == VMNodeStatus.INITIALIZED.value:
                         new_filters[TAG_RAY_NODE_STATUS] = STATUS_SETTING_UP
                     else:
                         new_filters[TAG_RAY_NODE_STATUS] = STATUS_UNINITIALIZED
                     tag_cache[worker] = new_filters
                 # List VMs from the desired workers' list
-                vmray_cluster_spec = vmray_cluster_response.get("spec")
+                vmray_cluster_spec = vmray_cluster_response.get("spec", {})
                 desired_workers = vmray_cluster_spec.get("desired_workers", [])
                 for worker in desired_workers:
                     if worker in current_workers.keys():
@@ -214,6 +218,9 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                     new_filters = filters.copy()
                     new_filters[TAG_RAY_NODE_STATUS] = STATUS_SETTING_UP
                     tag_cache[worker] = new_filters
+                    if not tag_filters:
+                        tag_cache[worker][TAG_RAY_NODE_NAME] = worker
+                        tag_cache[worker][TAG_RAY_NODE_KIND] = NODE_KIND_WORKER
 
             logger.info(f"Non terminated nodes are {nodes}")
             return nodes, tag_cache
@@ -250,7 +257,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         """Check current worker list and get the external ip."""
         with self.lock:
             node = self._get_node(nodeId)
-            if node and node.get("vm_status") == VMNodeStatus.RUNNING.value:
+            if node and node.get("vm_status", None) == VMNodeStatus.RUNNING.value:
                 ip = node.get("ip", None)
                 if ip and is_ipv4(ip):
                     logger.info(f"external IP is for {nodeId} is {ip}")
@@ -263,17 +270,17 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         the VmRayCluster CR"""
         with self.lock:
             vmray_cluster_response = self._get_cluster_response()
-            vmray_cluster_spec = vmray_cluster_response.get("spec")
+            vmray_cluster_spec = vmray_cluster_response.get("spec", {})
             # get desired workers
-            current_desired_workers = set(vmray_cluster_spec.get("desired_workers"))
-            logger.info("Current desired VMs {current_desired_workers}")
+            current_desired_workers = set(vmray_cluster_spec.get("desired_workers", []))
+            logger.info(f"Current desired VMs {current_desired_workers}")
             new_desired_workers = current_desired_workers.copy()
             # remove the node from the desired workers list
             new_desired_workers.discard(nodeId)
             new_desired_workers = list(new_desired_workers)
-            logger.info("New desired VMs {new_desired_workers}")
+            logger.info(f"New desired VMs {new_desired_workers}")
             if len(new_desired_workers) < len(current_desired_workers):
-                logger.info("Deleting VM {}".format(nodeId))
+                logger.info(f"Deleting VM {nodeId}")
                 path = f"vmrayclusters/{self.cluster_name}"
                 payload = [{
                         "op": "replace",
@@ -311,9 +318,9 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                     created_nodes_dict[f"{self.cluster_name}-head"] = f"{self.cluster_name}-head"
                 else:
                     vmray_cluster_reponse = self._get_cluster_response()
-                    vmray_cluster_spec = vmray_cluster_reponse.get("spec")
+                    vmray_cluster_spec = vmray_cluster_reponse.get("spec", {})
                     # get desired workers
-                    current_desired_workers = vmray_cluster_spec.get("desired_workers", None)
+                    current_desired_workers = vmray_cluster_spec.get("desired_workers", [])
                     logger.info(f"Current desired state: {current_desired_workers}")
                     # append new VM names with existing one
                     if current_desired_workers:
