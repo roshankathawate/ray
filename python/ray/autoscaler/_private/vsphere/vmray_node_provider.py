@@ -6,8 +6,12 @@ from ray.autoscaler._private.vsphere.cluster_operator_client import (
     ClusterOperatorClient,
 )
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, STATUS_UP_TO_DATE, \
-TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
+from ray.autoscaler.tags import (
+    STATUS_UP_TO_DATE,
+    TAG_RAY_CLUSTER_NAME,
+    TAG_RAY_NODE_NAME,
+    TAG_RAY_NODE_STATUS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +31,12 @@ class VmRayNodeProvider(NodeProvider):
 
     def non_terminated_nodes(self, tag_filters):
         logger.info(f"non_terminated_nodes: {tag_filters}")
-        nodes, tag_cache = self.client.list_vms( tag_filters)
+        nodes, tag_cache = self.client.list_vms(tag_filters)
         with self.tag_cache_lock:
             self.tag_cache.update(tag_cache)
         logger.info(f"non_terminated_nodes: {nodes}, {self.tag_cache}")
         return nodes
-    
+
     def is_running(self, node_id):
         logger.info(f"is_running: {node_id}")
         return self.client.is_vm_power_on(node_id)
@@ -69,8 +73,8 @@ class VmRayNodeProvider(NodeProvider):
         logger.info(f"set_node_tags: {node_id}, {tags}")
         with self.tag_cache_lock:
             for k, v in tags.items():
-                    # update tags for node_id
-                    self.tag_cache[node_id][k] = v
+                # update tags for node_id
+                self.tag_cache[node_id][k] = v
             logger.info(f"Updated tags for {node_id} to: {self.tag_cache[node_id]}")
 
     def create_node(self, node_config, tags, count) -> Dict[str, Any]:
@@ -96,7 +100,7 @@ class VmRayNodeProvider(NodeProvider):
                 self.tag_cache[node_id][TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
                 self.tag_cache[node_id][TAG_RAY_NODE_NAME] = node_id
                 self.tag_cache[node_id][TAG_RAY_CLUSTER_NAME] = self.cluster_name
-                
+
         return created_nodes_dict
 
     def terminate_node(self, node_id):
