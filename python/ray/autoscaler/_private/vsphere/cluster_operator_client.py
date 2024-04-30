@@ -190,7 +190,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                     tag_cache[nodeId] = new_filters
             if NODE_KIND_WORKER in tag_filters.values() or not tag_filters:
                 logger.info(f"Getting worker nodes")
-                current_workers = vmray_cluster_status.get("current_workers", None)
+                current_workers = vmray_cluster_status.get("current_workers", {})
                 # worker nodes found
                 for worker in current_workers.keys():
                     nodes.append(worker)
