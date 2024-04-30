@@ -237,7 +237,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             node = self._get_node(nodeId)
             if node:
                 logger.info(f"{nodeId}: {node}")
-                return node.get("vm_status") == VMNodeStatus.RUNNING.value
+                return node.get("vm_status", None) == VMNodeStatus.RUNNING.value
             logger.info(f"VM {nodeId} not found")
             return False
 
@@ -248,7 +248,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             node = self._get_node(nodeId)
             if node:
                 logger.info(f"{nodeId}: {node}")
-                return node.get("vm_status") == VMNodeStatus.INITIALIZED.value
+                return node.get("vm_status", None) == VMNodeStatus.INITIALIZED.value
             logger.info(f"VM {nodeId} is not in initialized status")
             return False
 
@@ -357,21 +357,21 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
 
     def _get_node(self, nodeId: str) -> Any:
         vmray_cluster_response = self._get_cluster_response()
-        vmray_cluster_status = vmray_cluster_response.get("status")
+        vmray_cluster_status = vmray_cluster_response.get("status", {})
         if not vmray_cluster_status:
-            return None
-        head_node_status = vmray_cluster_status.get("head_node_status", None)
+            return {}
+        head_node_status = vmray_cluster_status.get("head_node_status", {})
         # head node is found
         if head_node_status and nodeId == self.cluster_name + "-head":
             return head_node_status
-        current_workers = vmray_cluster_status.get("current_workers", None)
+        current_workers = vmray_cluster_status.get("current_workers", {})
         # worker nodes found
         for worker in current_workers.keys():
             if worker == nodeId:
                 return current_workers.get(worker)
         # If worker not found in the current worker then it might be getting created
         # and not yet ready. So check if it is in the desired workers list.
-        vmray_cluster_spec = vmray_cluster_response.get("spec")
+        vmray_cluster_spec = vmray_cluster_response.get("spec", {})
         desired_workers = vmray_cluster_spec.get("desired_workers", [])
         # TODO: Make a function to get the node from current or desired workers.
         for worker in desired_workers:
@@ -382,7 +382,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 return node
         logger.warning(f"VM {nodeId} not found")
 
-        return None
+        return {}
 
     def _get(self, path: str) -> Dict[str, Any]:
         """Wrapper for REST GET of resource with proper headers."""
