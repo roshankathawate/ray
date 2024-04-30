@@ -157,7 +157,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         )
         self.lock = RLock()
 
-    def list_vms(self, tag_filters: Dict[str, str]) -> list:
+    def list_vms(self, tag_filters: Dict[str, str])-> tuple[list, dict]:
         """Queries K8s for VMs in the RayCluster and filter them as per
         tags provided in the tag_filters.
         """
@@ -174,14 +174,14 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             except requests.exceptions.HTTPError as e:
                 # If HTTP 404 received means the cluster is not yet created.
                 if e.response.status_code == 404:
-                    return nodes
+                    return nodes, tag_cache
                 raise e
-            vmray_cluster_status = vmray_cluster_response.get("status", None)
+            vmray_cluster_status = vmray_cluster_response.get("status", {})
             if not vmray_cluster_status:
-                return nodes
+                return nodes, tag_cache
             if NODE_KIND_HEAD in tag_filters.values() or not tag_filters:
                 logger.info("Getting head node")
-                head_node_status = vmray_cluster_status.get("head_node_status", None)
+                head_node_status = vmray_cluster_status.get("head_node_status", {})
                 # head node is found
                 if head_node_status:
                     nodeId = self.cluster_name + "-head"
