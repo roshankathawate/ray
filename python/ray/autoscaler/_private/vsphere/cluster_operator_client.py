@@ -225,9 +225,8 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                     new_filters = filters.copy()
                     new_filters[TAG_RAY_NODE_STATUS] = STATUS_SETTING_UP
                     tag_cache[worker] = new_filters
-                    if not tag_filters:
-                        tag_cache[worker][TAG_RAY_NODE_NAME] = worker
-                        tag_cache[worker][TAG_RAY_NODE_KIND] = NODE_KIND_WORKER
+                    tag_cache[worker][TAG_RAY_NODE_NAME] = worker
+                    tag_cache[worker][TAG_RAY_NODE_KIND] = NODE_KIND_WORKER
 
             logger.info(f"Non terminated nodes are {nodes}")
             return nodes, tag_cache
