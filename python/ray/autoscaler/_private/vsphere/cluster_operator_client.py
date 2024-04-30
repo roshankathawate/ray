@@ -169,7 +169,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 if e.response.status_code == 404:
                     return nodes
                 raise e
-            vmray_cluster_status = vmray_cluster_response.get("status")
+            vmray_cluster_status = vmray_cluster_response.get("status", None)
             if not vmray_cluster_status:
                 return nodes
             if NODE_KIND_HEAD in tag_filters.values() or not tag_filters:
@@ -200,7 +200,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                     nodes.append(worker)
                     new_filters = filters.copy()
                     # setting worker node status
-                    status = worker.get("vm_status", None)
+                    status = current_workers[worker].get("vm_status", None)
                     if status == VMNodeStatus.RUNNING.value:
                         new_filters[TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
                     elif status == VMNodeStatus.INITIALIZED.value:
