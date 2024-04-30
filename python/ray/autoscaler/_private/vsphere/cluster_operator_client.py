@@ -196,9 +196,8 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                     else:
                         new_filters[TAG_RAY_NODE_STATUS] = STATUS_UNINITIALIZED
                     tag_cache[nodeId] = new_filters
-                    if not tag_filters:
-                        tag_cache[nodeId][TAG_RAY_NODE_NAME] = nodeId
-                        tag_cache[nodeId][TAG_RAY_NODE_KIND] = NODE_KIND_HEAD
+                    tag_cache[nodeId][TAG_RAY_NODE_NAME] = nodeId
+                    tag_cache[nodeId][TAG_RAY_NODE_KIND] = NODE_KIND_HEAD
             if NODE_KIND_WORKER in tag_filters.values() or not tag_filters:
                 logger.info("Getting worker nodes")
                 current_workers = vmray_cluster_status.get("current_workers", {})
