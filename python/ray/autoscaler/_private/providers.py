@@ -157,6 +157,7 @@ def _load_vsphere_defaults_config():
 
     return os.path.join(os.path.dirname(ray_vsphere.__file__), "defaults.yaml")
 
+
 def _load_gcp_defaults_config():
     import ray.autoscaler.gcp as ray_gcp
 
