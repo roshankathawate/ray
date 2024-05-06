@@ -5,7 +5,7 @@ import uuid
 from abc import ABC, abstractmethod
 from enum import Enum
 from threading import RLock
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
@@ -157,7 +157,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         )
         self.lock = RLock()
 
-    def list_vms(self, tag_filters: Dict[str, str])-> tuple[list, dict]:
+    def list_vms(self, tag_filters: Dict[str, str])-> Tuple[list, dict]:
         """Queries K8s for VMs in the RayCluster and filter them as per
         tags provided in the tag_filters.
         """
@@ -331,6 +331,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 else:
                     vmray_cluster_reponse = self._get_cluster_response()
                     vmray_cluster_spec = vmray_cluster_reponse.get("spec", {})
+                    logger.info(f"Cluster response: {vmray_cluster_reponse}")
                     # get desired workers
                     current_desired_workers = vmray_cluster_spec.get(
                         "desired_workers", []

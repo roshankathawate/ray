@@ -104,8 +104,9 @@ class VmRayNodeProvider(NodeProvider):
         return created_nodes_dict
 
     def terminate_node(self, node_id):
-        if node_id is None:
+        if not node_id or self.client.is_vm_creating(node_id) :
             return
+        # Delete node only if it is either in a running or a failure state
         self.client.delete_node(node_id)
         with self.tag_cache_lock:
             if node_id in self.tag_cache:
@@ -116,4 +117,4 @@ class VmRayNodeProvider(NodeProvider):
             return
 
         for node_id in node_ids:
-            self.client.delete_node(node_id)
+            self.terminate_node(node_id)
