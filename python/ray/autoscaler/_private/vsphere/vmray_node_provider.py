@@ -123,3 +123,6 @@ class VmRayNodeProvider(NodeProvider):
 
         for node_id in node_ids:
             self.terminate_node(node_id)
+
+    def safe_to_scale(self) -> bool:
+        return self.client.safe_to_scale()

@@ -20,6 +20,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_KIND,
     TAG_RAY_NODE_NAME,
     TAG_RAY_NODE_STATUS,
+    TAG_RAY_USER_NODE_TYPE,
 )
 
 # Design:
@@ -268,7 +269,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             if node and node.get("vm_status", None) == VMNodeStatus.RUNNING.value:
                 ip = node.get("ip", None)
                 if ip and is_ipv4(ip):
-                    logger.info(f"external IP is for {nodeId} is {ip}")
+                    logger.info(f"external IP for {nodeId} is {ip}")
                     return ip
             logger.warning(f"External IPv4 address of VM {nodeId} is not available")
             return None
@@ -315,20 +316,18 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 # The nodes are named as follows:
                 # <cluster-name>-head for the head node
                 # <cluster-name>-worker-<uuid> for the worker nodes
-                if "head" in tags[TAG_RAY_NODE_NAME]:
-                    new_vm_names = [f"{self.cluster_name}-head"]
-                else:
-                    new_vm_names = [
-                        f"{self.cluster_name}-worker-{str(uuid.uuid4())}"
-                        for _ in range(to_be_launched_node_count)
-                    ]
-                logger.info(f"Creating new VMs {new_vm_names}")
+                
                 # Cluster is not exist and need to create new Head node
                 if "head" in tags[TAG_RAY_NODE_NAME]:
                     created_nodes_dict[
                         f"{self.cluster_name}-head"
                     ] = f"{self.cluster_name}-head"
                 else:
+                    new_vm_names = [
+                        f"{self.cluster_name}-worker-{str(uuid.uuid4())}"
+                        for _ in range(to_be_launched_node_count)
+                    ]
+                    logger.info(f"Creating new VMs {new_vm_names}")
                     vmray_cluster_reponse = self._get_cluster_response()
                     vmray_cluster_spec = vmray_cluster_reponse.get("spec", {})
                     logger.info(f"Cluster response: {vmray_cluster_reponse}")
@@ -387,6 +386,18 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         logger.warning(f"VM {nodeId} not found")
 
         return {}
+    
+    def safe_to_scale(self):
+        # TODO: Add explaination
+        vmray_cluster_response = self._get_cluster_response()
+        vmray_cluster_status = vmray_cluster_response.get("status", {})
+        if not vmray_cluster_status:
+            return False
+        current_workers = vmray_cluster_status.get("current_workers", {})
+        vmray_cluster_spec = vmray_cluster_response.get("spec", {})
+        desired_workers = vmray_cluster_spec.get("desired_workers", [])
+        logger.info(f"Checking is it safe to scale: {len(current_workers)} and {len(desired_workers)}")
+        return len(current_workers) == len(desired_workers)
 
     def _get(self, path: str) -> Dict[str, Any]:
         """Wrapper for REST GET of resource with proper headers."""
