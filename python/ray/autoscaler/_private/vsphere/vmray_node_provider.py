@@ -1,5 +1,6 @@
 import logging
 import threading
+import time
 from typing import Any, Dict
 
 from ray.autoscaler._private.vsphere.cluster_operator_client import (
@@ -100,7 +101,8 @@ class VmRayNodeProvider(NodeProvider):
                 self.tag_cache[node_id][TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
                 self.tag_cache[node_id][TAG_RAY_NODE_NAME] = node_id
                 self.tag_cache[node_id][TAG_RAY_CLUSTER_NAME] = self.cluster_name
-
+        logger.info("Waiting for 30 sec.....")
+        time.sleep(30)
         return created_nodes_dict
 
     def terminate_node(self, node_id):
