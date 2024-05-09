@@ -31,19 +31,15 @@ class VmRayNodeProvider(NodeProvider):
         return cluster_config
 
     def non_terminated_nodes(self, tag_filters):
-        logger.info(f"non_terminated_nodes: {tag_filters}")
         nodes, tag_cache = self.client.list_vms(tag_filters)
         with self.tag_cache_lock:
             self.tag_cache.update(tag_cache)
-        logger.info(f"non_terminated_nodes: {nodes}, {self.tag_cache}")
         return nodes
 
     def is_running(self, node_id):
-        logger.info(f"is_running: {node_id}")
         return self.client.is_vm_power_on(node_id)
 
     def is_terminated(self, node_id):
-        logger.info(f"is_terminated: {node_id}")
         if self.client.is_vm_power_on(node_id):
             return False
         else:
@@ -53,25 +49,20 @@ class VmRayNodeProvider(NodeProvider):
             return not self.client.is_vm_creating(node_id)
 
     def node_tags(self, node_id):
-        logger.info(f"node_tags: {node_id}")
         with self.tag_cache_lock:
-            logger.info(f"node_tags: {self.tag_cache[node_id]}")
             return self.tag_cache[node_id]
 
     def external_ip(self, node_id):
-        logger.info(f"external_ip: {node_id}")
         return self.client.get_vm_external_ip(node_id)
 
     def internal_ip(self, node_id):
         # Currently vSphere VMs do not show an internal IP. So we just return the
         # external IP
-        logger.info(f"internal_ip: {node_id}")
         return self.client.get_vm_external_ip(node_id)
 
     def set_node_tags(self, node_id, tags):
         # This method gets called from the Ray and it passes
         # node_id. It updates old tags (if present) with new values.
-        logger.info(f"set_node_tags: {node_id}, {tags}")
         with self.tag_cache_lock:
             for k, v in tags.items():
                 # update tags for node_id
@@ -85,13 +76,10 @@ class VmRayNodeProvider(NodeProvider):
         instances.
         """
         to_be_launched_node_count = count
-        logger.info("create_node:")
-        logger.info(f"Create {count} node with tags : {tags}")
-
         created_nodes_dict = {}
         if to_be_launched_node_count > 0:
             created_nodes_dict = self.client.create_nodes(
-                node_config, tags, to_be_launched_node_count
+                tags, to_be_launched_node_count
             )
         # make sure to mark newly created nodes as ready
         # so autoscaler shouldn't provision new ones
@@ -101,17 +89,12 @@ class VmRayNodeProvider(NodeProvider):
                 self.tag_cache[node_id][TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
                 self.tag_cache[node_id][TAG_RAY_NODE_NAME] = node_id
                 self.tag_cache[node_id][TAG_RAY_CLUSTER_NAME] = self.cluster_name
-        logger.info("Waiting for 30 sec.....")
-        time.sleep(30)
         return created_nodes_dict
 
     def terminate_node(self, node_id):
-        logger.info(f"In terminate_node for: {node_id}")
         if not node_id or self.client.is_vm_creating(node_id) :
-            logger.info(f"Not terminating node: {node_id}")
             return
-        # Delete node only if it is either in a running or a failure state
-        logger.info(f"Terminating node: {node_id}")
+        # Delete node iff it is either in a running or a failure state
         self.client.delete_node(node_id)
         with self.tag_cache_lock:
             if node_id in self.tag_cache:
@@ -120,7 +103,6 @@ class VmRayNodeProvider(NodeProvider):
     def terminate_nodes(self, node_ids):
         if not node_ids:
             return
-
         for node_id in node_ids:
             self.terminate_node(node_id)
 
