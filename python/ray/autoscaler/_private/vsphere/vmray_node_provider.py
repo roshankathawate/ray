@@ -1,6 +1,5 @@
 import logging
 import threading
-import time
 from typing import Any, Dict
 
 from ray.autoscaler._private.vsphere.cluster_operator_client import (
@@ -92,7 +91,7 @@ class VmRayNodeProvider(NodeProvider):
         return created_nodes_dict
 
     def terminate_node(self, node_id):
-        if not node_id or self.client.is_vm_creating(node_id) :
+        if not node_id or self.client.is_vm_creating(node_id):
             return
         # Delete node iff it is either in a running or a failure state
         self.client.delete_node(node_id)
