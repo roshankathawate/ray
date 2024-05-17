@@ -146,7 +146,8 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
     def __init__(self, cluster_name: str, provider_config: Dict[str, Any]):
         self.cluster_name = cluster_name
         self.supervisor_cluster_config = provider_config["vsphere_config"]
-        self.max_worker_nodes = provider_config["max_workers"]
+        self.max_worker_nodes = None
+        self.min_worker_nodes = None
         self.namespace = self.supervisor_cluster_config["namespace"]
         assert (
             SERVICE_ACCOUNT_TOKEN is not None
@@ -172,6 +173,12 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             vmray_cluster_response = None
             try:
                 vmray_cluster_response = self._get_cluster_response()
+                if not self.max_worker_nodes:
+                    vmray_cluster_spec = vmray_cluster_response.get("spec", {})
+                    worker_node_config = vmray_cluster_spec.get("worker_node",{})
+                    # If min_workers and max_workers are not provided then default to 0
+                    self.min_worker_nodes = worker_node_config.get("min_workers", 0)
+                    self.max_worker_nodes = worker_node_config.get("max_workers", self.min_worker_nodes)
             except requests.exceptions.HTTPError as e:
                 # If HTTP 404 received means the cluster is not yet created.
                 if e.response.status_code == 404:
@@ -334,7 +341,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                     )
                     # Make sure autoscaler do not over provision the nodes.
                     if (
-                        len(current_desired_workers) + len(new_vm_names)
+                        (len(current_desired_workers) + len(new_vm_names))
                         > self.max_worker_nodes
                     ):
                         logger.warning(
@@ -418,7 +425,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         )
         # Unique workers must be less than max_workers.
         return (
-            len(set(current_workers.keys())).union(set(desired_workers))
+            len(set(current_workers.keys()).union(set(desired_workers)))
         ) < self.max_worker_nodes
 
     def _get(self, path: str) -> Dict[str, Any]:
