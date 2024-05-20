@@ -175,10 +175,12 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 vmray_cluster_response = self._get_cluster_response()
                 if not self.max_worker_nodes:
                     vmray_cluster_spec = vmray_cluster_response.get("spec", {})
-                    worker_node_config = vmray_cluster_spec.get("worker_node",{})
+                    worker_node_config = vmray_cluster_spec.get("worker_node", {})
                     # If min_workers and max_workers are not provided then default to 0
                     self.min_worker_nodes = worker_node_config.get("min_workers", 0)
-                    self.max_worker_nodes = worker_node_config.get("max_workers", self.min_worker_nodes)
+                    self.max_worker_nodes = worker_node_config.get(
+                        "max_workers", self.min_worker_nodes
+                    )
             except requests.exceptions.HTTPError as e:
                 # If HTTP 404 received means the cluster is not yet created.
                 if e.response.status_code == 404:
@@ -336,17 +338,18 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                     vmray_cluster_spec = vmray_cluster_response.get("spec", {})
                     logger.info(f"Cluster response: {vmray_cluster_response}")
                     # get desired workers
-                    desired_workers = vmray_cluster_spec.get(
-                        "desired_workers", []
-                    )
+                    desired_workers = vmray_cluster_spec.get("desired_workers", [])
                     logger.info(f"Desired state: {desired_workers}")
-                    # If workers are present in both the list then it shows stable state for the cluster.
+                    # If workers are present in both the list then it shows stable
+                    # state for the cluster.
                     # Append new VM names with existing one
                     if desired_workers:
                         new_desired_workers.extend(desired_workers)
                     new_desired_workers.extend(new_vm_names)
                     if len(new_desired_workers) > self.max_worker_nodes:
-                        logger.warning("Autoscaler attempted to create more than max_workers VMs.")
+                        logger.warning(
+                            "Autoscaler attempted to create more than max_workers VMs."
+                        )
                         return created_nodes_dict
                     logger.info(f"Adding VMs to desired VMs list: {new_vm_names}")
                     path = f"vmrayclusters/{self.cluster_name}"
@@ -425,18 +428,19 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         if len(current_workers.keys()) > len(desired_workers):
             # The operator hasn't removed this worker yet. Abort
             # the autoscaler update.
-            logger.warning(f"Waiting for operator to remove workers: {set(current_workers.keys()).difference(set(desired_workers))}.")
+            logger.warning(
+                "Waiting for operator to remove worker nodes:"
+                + f"{set(current_workers.keys()).difference(set(desired_workers))}."
+            )
             return False
-        
+
         # If there are workers in the desired_workers list but not in the
         # current_workers list that means few workers are not yet up and running.
         if (
             len(set(current_workers.keys()).union(set(desired_workers)))
             > self.max_worker_nodes
         ):
-            logger.warning(
-                "Autoscaler attempted to create more than maxReplicas VMs."
-            )
+            logger.warning("Autoscaler attempted to create more than maxReplicas VMs.")
             return False
         return True
 
