@@ -3,7 +3,12 @@ import pytest
 import threading
 from unittest.mock import MagicMock, patch
 
-from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME, TAG_RAY_NODE_STATUS, STATUS_UP_TO_DATE
+from ray.autoscaler.tags import (
+    TAG_RAY_CLUSTER_NAME,
+    TAG_RAY_NODE_NAME,
+    TAG_RAY_NODE_STATUS,
+    STATUS_UP_TO_DATE,
+)
 from ray.autoscaler._private.vsphere.vmray_node_provider import VmRayNodeProvider
 
 _CLUSTER_NAME = "test"
@@ -22,15 +27,20 @@ def mock_vmray_node_provider():
         self.tag_cache = {}
         self.vsphere_config = provider_config["vsphere_config"]
         self.client = MagicMock()
-        
+
     with patch.object(VmRayNodeProvider, "__init__", __init__):
         node_provider = VmRayNodeProvider(_PROVIDER_CONFIG, _CLUSTER_NAME)
     return copy.deepcopy(node_provider)
 
+
 def test_non_terminated_nodes():
     """Should return list of running nodes and update tag_cache"""
     vnp = mock_vmray_node_provider()
-    tag_filters = {"ray-node-name": "node_1", "ray-node-type": "worker", "ray-user-node-type": "ray.head.default" }
+    tag_filters = {
+        "ray-node-name": "node_1",
+        "ray-node-type": "worker",
+        "ray-user-node-type": "ray.head.default",
+    }
     tag_cache = {"node_1": tag_filters}
     nodes = ["node_1"]
     vnp.client.list_vms = MagicMock(return_value=tuple(nodes, tag_cache))
@@ -38,11 +48,13 @@ def test_non_terminated_nodes():
     assert len(non_terminated_nodes) == 1
     assert len(vnp.tag_cache) == 1
 
+
 def test_is_running():
     """Should return true if a node is not in RUNNING state"""
     vnp = mock_vmray_node_provider()
     vnp.client.is_vm_power_on.return_value = True
     assert vnp.is_running("test_node") is True
+
 
 def test_is_terminated():
     """Should return true if a cached node is not in POWERED_ON state"""
@@ -51,6 +63,7 @@ def test_is_terminated():
     vnp.client.is_vm_creating.return_value = False
     is_terminated = vnp.is_terminated("node1")
     assert is_terminated is True
+
 
 def test_node_tags():
     """Should return cached tags of a node"""
@@ -68,11 +81,13 @@ def test_node_tags():
     tags = vnp.node_tags("test_vm_id_1")
     assert tags == vnp.tag_cache["test_vm_id_1"]
 
+
 def test_external_ip():
     """Should return external ip of a node"""
     vnp = mock_vmray_node_provider()
     vnp.client.get_vm_external_ip.return_value = "10.10.10.10"
     assert vnp.external_ip("test_node") == "10.10.10.10"
+
 
 def test_internal_ip():
     """Should return external ip of a node"""
@@ -80,12 +95,17 @@ def test_internal_ip():
     vnp.client.get_vm_external_ip.return_value = "10.10.10.10"
     assert vnp.internal_ip("test_node") == "10.10.10.10"
 
+
 def test_set_node_tags():
     """Should update old tags with new ones"""
     vnp = mock_vmray_node_provider()
     vnp.tag_cache_lock = threading.Lock()
-    vnp.tag_cache = {"vm1": {"tag1": ""}, "vm2": ["tag1", "tag2"]}
-    new_tags =  {"vm1": ["tag1", "tag2"], "vm2": ["tag1", "tag2"]}
+    vnp.tag_cache = {"vm1": {"tag1": ""}, "vm2": {"tag1": "tag2"}}
+    new_tags = {"tag1": "new_tag"}
+    vnp.set_node_tags("vm1", new_tags)
+    assert vnp.tag_cache["vm1"]["tag1"] == "new_tag"
+    assert vnp.tag_cache["vm2"]["tag1"] == "tag2"
+
 
 def test_create_node():
     vnp = mock_vmray_node_provider()
@@ -101,11 +121,12 @@ def test_create_node():
     assert vnp.tag_cache["vm-1"][TAG_RAY_NODE_NAME] == "vm-1"
     assert vnp.tag_cache["vm-1"][TAG_RAY_CLUSTER_NAME] == vnp.cluster_name
 
+
 def test_terminate_node():
     vnp = mock_vmray_node_provider()
     vnp.tag_cache_lock = threading.Lock()
     vnp.tag_cache = {"vm1": ["tag1", "tag2"], "vm2": ["tag1", "tag2"]}
-    # If node is None 
+    # If node is None
     vnp.terminate_node(None)
     assert len(vnp.tag_cache) == 2
     # If node is still getting created so not delete
@@ -116,6 +137,7 @@ def test_terminate_node():
     vnp.client.delete_node = MagicMock()
     vnp.terminate_node("vm2")
     assert len(vnp.tag_cache) == 1
+
 
 def test_terminate_nodes():
     pass
