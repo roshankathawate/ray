@@ -412,21 +412,22 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         and we should wait.
         3. If workers are present in both the list shows stable state for the cluster.
         """
-        vmray_cluster_response = self._get_cluster_response()
-        vmray_cluster_status = vmray_cluster_response.get("status", {})
-        if not vmray_cluster_status:
-            return False
-        current_workers = vmray_cluster_status.get("current_workers", {})
-        vmray_cluster_spec = vmray_cluster_response.get("spec", {})
-        desired_workers = vmray_cluster_spec.get("desired_workers", [])
-        logger.info(
-            f"Checking is it safe to scale:\n"
-            f"{len(current_workers)} and {len(desired_workers)}"
-        )
-        # Unique workers must be less than max_workers.
-        return (
-            len(set(current_workers.keys()).union(set(desired_workers)))
-        ) < self.max_worker_nodes
+        return True
+        # vmray_cluster_response = self._get_cluster_response()
+        # vmray_cluster_status = vmray_cluster_response.get("status", {})
+        # if not vmray_cluster_status:
+        #     return False
+        # current_workers = vmray_cluster_status.get("current_workers", {})
+        # vmray_cluster_spec = vmray_cluster_response.get("spec", {})
+        # desired_workers = vmray_cluster_spec.get("desired_workers", [])
+        # logger.info(
+        #     f"Checking is it safe to scale:\n"
+        #     f"{len(current_workers)} and {len(desired_workers)}"
+        # )
+        # # Unique workers must be less than max_workers.
+        # return (
+        #     len(set(current_workers.keys()).union(set(desired_workers)))
+        # ) < self.max_worker_nodes
 
     def _get(self, path: str) -> Dict[str, Any]:
         """Wrapper for REST GET of resource with proper headers."""
