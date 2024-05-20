@@ -332,28 +332,23 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                         for _ in range(to_be_launched_node_count)
                     ]
                     logger.info(f"Creating new VMs {new_vm_names}")
-                    vmray_cluster_reponse = self._get_cluster_response()
-                    vmray_cluster_spec = vmray_cluster_reponse.get("spec", {})
-                    logger.info(f"Cluster response: {vmray_cluster_reponse}")
+                    vmray_cluster_response = self._get_cluster_response()
+                    vmray_cluster_spec = vmray_cluster_response.get("spec", {})
+                    logger.info(f"Cluster response: {vmray_cluster_response}")
                     # get desired workers
-                    current_desired_workers = vmray_cluster_spec.get(
+                    desired_workers = vmray_cluster_spec.get(
                         "desired_workers", []
                     )
-                    # Make sure autoscaler do not over provision the nodes.
-                    if (
-                        (len(current_desired_workers) + len(new_vm_names))
-                        > self.max_worker_nodes
-                    ):
-                        logger.warning(
-                            "Autoscaler attempted to create more than maxReplicas VMs."
-                        )
-                        return created_nodes_dict
-                    logger.info(f"Current desired state: {current_desired_workers}")
-                    # append new VM names with existing one
-                    if current_desired_workers:
-                        new_desired_workers.extend(current_desired_workers)
+                    logger.info(f"Desired state: {desired_workers}")
+                    # If workers are present in both the list then it shows stable state for the cluster.
+                    # Append new VM names with existing one
+                    if desired_workers:
+                        new_desired_workers.extend(desired_workers)
                     new_desired_workers.extend(new_vm_names)
-                    logger.info(f"Adding VMs to a desired state: {new_vm_names}")
+                    if len(new_desired_workers) > self.max_worker_nodes:
+                        logger.warning("Autoscaler attempted to create more than max_workers VMs.")
+                        return created_nodes_dict
+                    logger.info(f"Adding VMs to desired VMs list: {new_vm_names}")
                     path = f"vmrayclusters/{self.cluster_name}"
                     payload = [
                         {
@@ -377,10 +372,10 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         if not vmray_cluster_status:
             return {}
         head_node_status = vmray_cluster_status.get("head_node_status", {})
+        current_workers = vmray_cluster_status.get("current_workers", {})
         # head node is found
         if head_node_status and node_id == self.cluster_name + "-head":
             return head_node_status
-        current_workers = vmray_cluster_status.get("current_workers", {})
         # worker nodes found
         for worker in current_workers.keys():
             if worker == node_id:
@@ -412,22 +407,38 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         and we should wait.
         3. If workers are present in both the list shows stable state for the cluster.
         """
+        # return True
+        vmray_cluster_response = self._get_cluster_response()
+        vmray_cluster_status = vmray_cluster_response.get("status", {})
+        if not vmray_cluster_status:
+            return False
+        current_workers = vmray_cluster_status.get("current_workers", {})
+        vmray_cluster_spec = vmray_cluster_response.get("spec", {})
+        desired_workers = vmray_cluster_spec.get("desired_workers", [])
+        logger.info(
+            f"Checking is it safe to scale:\n"
+            f"{len(current_workers)} and {len(desired_workers)}"
+        )
+        # If there are workers in the current_workers list but not in a
+        # desired_workers list indicates workers are not yet deleted completely
+        # and we should wait.
+        if len(current_workers.keys()) > len(desired_workers):
+            # The operator hasn't removed this worker yet. Abort
+            # the autoscaler update.
+            logger.warning(f"Waiting for operator to remove workers: {set(current_workers.keys()).difference(set(desired_workers))}.")
+            return False
+        
+        # If there are workers in the desired_workers list but not in the
+        # current_workers list that means few workers are not yet up and running.
+        if (
+            len(set(current_workers.keys()).union(set(desired_workers)))
+            > self.max_worker_nodes
+        ):
+            logger.warning(
+                "Autoscaler attempted to create more than maxReplicas VMs."
+            )
+            return False
         return True
-        # vmray_cluster_response = self._get_cluster_response()
-        # vmray_cluster_status = vmray_cluster_response.get("status", {})
-        # if not vmray_cluster_status:
-        #     return False
-        # current_workers = vmray_cluster_status.get("current_workers", {})
-        # vmray_cluster_spec = vmray_cluster_response.get("spec", {})
-        # desired_workers = vmray_cluster_spec.get("desired_workers", [])
-        # logger.info(
-        #     f"Checking is it safe to scale:\n"
-        #     f"{len(current_workers)} and {len(desired_workers)}"
-        # )
-        # # Unique workers must be less than max_workers.
-        # return (
-        #     len(set(current_workers.keys()).union(set(desired_workers)))
-        # ) < self.max_worker_nodes
 
     def _get(self, path: str) -> Dict[str, Any]:
         """Wrapper for REST GET of resource with proper headers."""
