@@ -142,7 +142,21 @@ def test_terminate_node():
 
 
 def test_terminate_nodes():
-    pass
+    vnp = mock_vmray_node_provider()
+    vnp.tag_cache_lock = threading.Lock()
+    vnp.tag_cache = {"vm1": ["tag1", "tag2"], "vm2": ["tag1", "tag2"]}
+    # If node is None
+    vnp.terminate_nodes(None)
+    assert len(vnp.tag_cache) == 2
+    # If node is still getting created so not delete
+    vnp.client.is_vm_creating = MagicMock(return_value=True)
+    vnp.terminate_nodes(["vm2"])
+    assert len(vnp.tag_cache) == 2
+    # If node is either in a running or a failure state then delete it
+    vnp.client.is_vm_creating = MagicMock(return_value=False)
+    vnp.client.delete_node = MagicMock()
+    vnp.terminate_nodes(["vm1", "vm2"])
+    assert len(vnp.tag_cache) == 0
 
 
 if __name__ == "__main__":
