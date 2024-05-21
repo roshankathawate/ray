@@ -36,6 +36,7 @@ def mock_vmray_node_provider():
 def test_non_terminated_nodes():
     """Should return list of running nodes and update tag_cache"""
     vnp = mock_vmray_node_provider()
+    vnp.tag_cache_lock = threading.Lock()
     tag_filters = {
         "ray-node-name": "node_1",
         "ray-node-type": "worker",
@@ -43,7 +44,7 @@ def test_non_terminated_nodes():
     }
     tag_cache = {"node_1": tag_filters}
     nodes = ["node_1"]
-    vnp.client.list_vms = MagicMock(return_value=tuple[nodes, tag_cache])
+    vnp.client.list_vms = MagicMock(return_value=(nodes, tag_cache))
     non_terminated_nodes = vnp.non_terminated_nodes(tag_filters)
     assert len(non_terminated_nodes) == 1
     assert len(vnp.tag_cache) == 1
@@ -111,16 +112,31 @@ def test_create_node():
     vnp = mock_vmray_node_provider()
     vnp.tag_cache_lock = threading.Lock()
     node_config = {}
-    vnp.client.create_node = MagicMock(return_value={"vm-1": "vm-1", "vm-2": "vm-2"})
+
+    def mock_create_node():
+        created_nodes_dict = {"vm-1": "vm-1", "vm-2": "vm-2"}
+        yield created_nodes_dict
+        # for mock_node in created_nodes_dict:
+        #     mock_node.vm = "vm-test"
+        #     yield mock_node
+
+    # vnp.create_instant_clone_node = MagicMock(
+    #     side_effect=mock_create_node()
+    # )
+    vnp.client.create_nodes = MagicMock(side_effect=mock_create_node())
 
     created_nodes_dict = vnp.create_node(
-        node_config, {"ray-node-name": "ray-node-1", "ray-node-type": "head"}, 2
+        node_config, {"ray-node-name": "ray-node-1", "ray-node-type": "head", "ray-node-status": "uninitialised"}, 2
     )
     assert len(created_nodes_dict) == 2
     assert len(vnp.tag_cache) == 2
     assert vnp.tag_cache["vm-1"][TAG_RAY_NODE_STATUS] == STATUS_UP_TO_DATE
     assert vnp.tag_cache["vm-1"][TAG_RAY_NODE_NAME] == "vm-1"
     assert vnp.tag_cache["vm-1"][TAG_RAY_CLUSTER_NAME] == vnp.cluster_name
+
+    assert vnp.tag_cache["vm-2"][TAG_RAY_NODE_STATUS] == STATUS_UP_TO_DATE
+    assert vnp.tag_cache["vm-2"][TAG_RAY_NODE_NAME] == "vm-2"
+    assert vnp.tag_cache["vm-2"][TAG_RAY_CLUSTER_NAME] == vnp.cluster_name
 
 
 def test_terminate_node():
