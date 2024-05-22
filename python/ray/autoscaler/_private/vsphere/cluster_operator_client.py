@@ -35,6 +35,10 @@ VMRAY_CRD_VER = os.getenv("VMRAY_CRD_VER", "v1alpha1")
 
 SERVICE_ACCOUNT_TOKEN = os.getenv("SVC_ACCOUNT_TOKEN")
 
+DEFAULT_HEAD_NODE_TYPE = "ray.head.default"
+DEFAULT_WORKER_NODE_TYPE = "worker"
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -193,7 +197,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 head_node_status = vmray_cluster_status.get("head_node_status", {})
                 # head node is found
                 if head_node_status:
-                    node_id = self.cluster_name + "-head"
+                    node_id = f"{self.cluster_name}-head"
                     nodes.append(node_id)
                     new_filters = filters.copy()
                     # Setting head node status
@@ -207,7 +211,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
 
                     new_filters[TAG_RAY_NODE_NAME] = node_id
                     new_filters[TAG_RAY_NODE_KIND] = NODE_KIND_HEAD
-                    new_filters[TAG_RAY_USER_NODE_TYPE] = "ray.head.default"
+                    new_filters[TAG_RAY_USER_NODE_TYPE] = DEFAULT_HEAD_NODE_TYPE
                     tag_cache[node_id] = new_filters
             if NODE_KIND_WORKER in tag_filters.values() or not tag_filters:
                 current_workers = vmray_cluster_status.get("current_workers", {})
@@ -225,7 +229,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                         new_filters[TAG_RAY_NODE_STATUS] = STATUS_UNINITIALIZED
                     new_filters[TAG_RAY_NODE_NAME] = worker
                     new_filters[TAG_RAY_NODE_KIND] = NODE_KIND_WORKER
-                    new_filters[TAG_RAY_USER_NODE_TYPE] = "worker"
+                    new_filters[TAG_RAY_USER_NODE_TYPE] = DEFAULT_WORKER_NODE_TYPE
                     tag_cache[worker] = new_filters
                 # List VMs from the desired workers' list
                 vmray_cluster_spec = vmray_cluster_response.get("spec", {})
@@ -238,7 +242,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                     new_filters[TAG_RAY_NODE_STATUS] = STATUS_SETTING_UP
                     new_filters[TAG_RAY_NODE_NAME] = worker
                     new_filters[TAG_RAY_NODE_KIND] = NODE_KIND_WORKER
-                    new_filters[TAG_RAY_USER_NODE_TYPE] = "worker"
+                    new_filters[TAG_RAY_USER_NODE_TYPE] = DEFAULT_WORKER_NODE_TYPE
                     tag_cache[worker] = new_filters
 
             logger.info(f"Non terminated nodes are {nodes}")
@@ -249,8 +253,9 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         true else false."""
         with self.lock:
             node = self._get_node(node_id)
+            logger.info(f"Node is {node}")
             if node:
-                logger.info(f"{node_id}: {node}")
+                logger.info(f"{node_id}: {node.get('vm_status', None)}")
                 return node.get("vm_status", None) == VMNodeStatus.RUNNING.value
             logger.info(f"VM {node_id} not found")
             return False
@@ -262,7 +267,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             node = self._get_node(node_id)
             if node:
                 return node.get("vm_status", None) == VMNodeStatus.INITIALIZED.value
-            logger.info(f"VM {node_id} is not in initialized status")
+            logger.info(f"VM {node_id} is not yet initialized")
             return False
 
     def set_node_tags(self, tags: Dict[str, str]) -> None:
@@ -271,15 +276,15 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         """
         pass
 
-    def get_vm_external_ip(self, nodeId: str) -> Optional[str]:
+    def get_vm_external_ip(self, node_id: str) -> Optional[str]:
         """Check current worker list and get the external ip."""
         with self.lock:
-            node = self._get_node(nodeId)
+            node = self._get_node(node_id)
             if node and node.get("vm_status", None) == VMNodeStatus.RUNNING.value:
                 ip = node.get("ip", None)
                 if ip and is_ipv4(ip):
                     return ip
-            logger.warning(f"External IPv4 address of VM {nodeId} is not available")
+            logger.warning(f"External IPv4 address of VM {node_id} is not available")
             return None
 
     def delete_node(self, node_id: str) -> None:
@@ -363,7 +368,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                     self._patch(path, payload)
                     for vm in new_vm_names:
                         created_nodes_dict[vm] = vm
-                return created_nodes_dict
+            return created_nodes_dict
 
     def _get_cluster_response(self):
         with self.lock:
@@ -387,7 +392,6 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         # and not yet ready. So check if it is in the desired workers list.
         vmray_cluster_spec = vmray_cluster_response.get("spec", {})
         desired_workers = vmray_cluster_spec.get("desired_workers", [])
-        # TODO: Make a function to get the node from current or desired workers.
         for worker in desired_workers:
             if worker == node_id:
                 # set vm_status as VM in the desired workers' list will not
@@ -420,28 +424,12 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         desired_workers = vmray_cluster_spec.get("desired_workers", [])
         logger.info(
             f"Checking is it safe to scale:\n"
-            f"{len(current_workers)} and {len(desired_workers)}"
+            f"Current workers: {len(current_workers)} and Desired workers: {len(desired_workers)}"
         )
-        # If there are workers in the current_workers list but not in a
-        # desired_workers list indicates workers are not yet deleted completely
-        # and we should wait.
-        if len(current_workers.keys()) > len(desired_workers):
-            # The operator hasn't removed this worker yet. Abort
-            # the autoscaler update.
-            logger.warning(
-                "Waiting for operator to remove worker nodes:"
-                + f"{set(current_workers.keys()).difference(set(desired_workers))}."
-            )
+        # Do not scale until reaches desired state
+        if(len(desired_workers) != len(current_workers)):
             return False
-
-        # If there are workers in the desired_workers list but not in the
-        # current_workers list that means few workers are not yet up and running.
-        if (
-            len(set(current_workers.keys()).union(set(desired_workers)))
-            > self.max_worker_nodes
-        ):
-            logger.warning("Autoscaler attempted to create more than maxReplicas VMs.")
-            return False
+        
         return True
 
     def _get(self, path: str) -> Dict[str, Any]:

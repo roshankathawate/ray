@@ -14,9 +14,9 @@ from ray.autoscaler._private.vsphere.vmray_node_provider import VmRayNodeProvide
 _CLUSTER_NAME = "test"
 _PROVIDER_CONFIG = {
     "vsphere_config": {
-        "namespace": "roshan-deploy",
+        "namespace": "test",
         "ca_cert": "",
-        "api_server": "10.168.209.17",
+        "api_server": "10.10.10.10",
     }
 }
 
