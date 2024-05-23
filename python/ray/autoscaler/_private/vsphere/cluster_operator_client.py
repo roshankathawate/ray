@@ -185,6 +185,10 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                     self.max_worker_nodes = worker_node_config.get(
                         "max_workers", self.min_worker_nodes
                     )
+                    logger.info(
+                        f"Min and max workers set to {self.min_worker_nodes}"
+                        f"and {self.max_worker_nodes} respectively."
+                    )
             except requests.exceptions.HTTPError as e:
                 # If HTTP 404 received means the cluster is not yet created.
                 if e.response.status_code == 404:
@@ -253,9 +257,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         true else false."""
         with self.lock:
             node = self._get_node(node_id)
-            logger.info(f"Node is {node}")
             if node:
-                logger.info(f"{node_id}: {node.get('vm_status', None)}")
                 return node.get("vm_status", None) == VMNodeStatus.RUNNING.value
             logger.info(f"VM {node_id} not found")
             return False
@@ -284,7 +286,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 ip = node.get("ip", None)
                 if ip and is_ipv4(ip):
                     return ip
-            logger.warning(f"External IPv4 address of VM {node_id} is not available")
+            logger.info(f"External IPv4 address of VM {node_id} is not available")
             return None
 
     def delete_node(self, node_id: str) -> None:
@@ -301,6 +303,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             new_desired_workers.discard(node_id)
             new_desired_workers = list(new_desired_workers)
             logger.info(f"New desired VMs {new_desired_workers}")
+            # Make sure node was present and deleted from the desired workers list
             if len(new_desired_workers) < len(current_desired_workers):
                 logger.info(f"Deleting VM {node_id}")
                 path = f"vmrayclusters/{self.cluster_name}"
@@ -344,7 +347,6 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                     logger.info(f"Cluster response: {vmray_cluster_response}")
                     # get desired workers
                     desired_workers = vmray_cluster_spec.get("desired_workers", [])
-                    logger.info(f"Desired state: {desired_workers}")
                     # If workers are present in both the list then it shows stable
                     # state for the cluster.
                     # Append new VM names with existing one
@@ -398,7 +400,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 # have vm_status field.
                 node = {"vm_status": VMNodeStatus.INITIALIZED.value}
                 return node
-        logger.warning(f"VM {node_id} not found")
+        logger.info(f"VM {node_id} not found")
 
         return {}
 
@@ -424,12 +426,13 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         desired_workers = vmray_cluster_spec.get("desired_workers", [])
         logger.info(
             f"Checking is it safe to scale:\n"
-            f"Current workers: {len(current_workers)} and Desired workers: {len(desired_workers)}"
+            f"Current workers: {current_workers.keys()} \n and \n"
+            f"Desired workers: {desired_workers}"
         )
         # Do not scale until reaches desired state
-        if(len(desired_workers) != len(current_workers)):
+        if len(desired_workers) != len(current_workers):
             return False
-        
+
         return True
 
     def _get(self, path: str) -> Dict[str, Any]:

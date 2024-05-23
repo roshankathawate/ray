@@ -126,7 +126,13 @@ def test_create_node():
     vnp.client.create_nodes = MagicMock(side_effect=mock_create_node())
 
     created_nodes_dict = vnp.create_node(
-        node_config, {"ray-node-name": "ray-node-1", "ray-node-type": "head", "ray-node-status": "uninitialised"}, 2
+        node_config,
+        {
+            "ray-node-name": "ray-node-1",
+            "ray-node-type": "head",
+            "ray-node-status": "uninitialised",
+        },
+        2,
     )
     assert len(created_nodes_dict) == 2
     assert len(vnp.tag_cache) == 2
