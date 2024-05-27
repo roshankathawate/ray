@@ -432,6 +432,10 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         # Do not scale until reaches desired state
         if len(desired_workers) != len(current_workers):
             return False
+        else:
+            for worker in current_workers.values():
+                if worker.get('vm_status', None) != VMNodeStatus.RUNNING.value:
+                    return False
 
         return True
 
