@@ -2,7 +2,7 @@ import copy
 import logging
 import os
 
-from python.ray.autoscaler._private.constants import DISABLE_NODE_UPDATERS_KEY
+from ray.autoscaler._private.constants import DISABLE_NODE_UPDATERS_KEY
 from ray.autoscaler._private.event_system import CreateClusterEvent, global_event_system
 from ray.autoscaler._private.util import check_legacy_fields
 
@@ -258,3 +258,4 @@ def disable_node_updater(config):
     logger.info("Disabling NodeUpdater threads as Cluster Operator is " +
                 "responsible for Ray setup on nodes.")
     config["provider"][DISABLE_NODE_UPDATERS_KEY] = True
+    return config
