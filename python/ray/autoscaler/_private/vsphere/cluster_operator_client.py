@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
+from ray.autoscaler._private.vsphere.utils import Constants, singleton_client
 from ray.autoscaler._private.vsphere.utils import is_ipv4
 from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
@@ -17,6 +18,7 @@ from ray.autoscaler.tags import (
     STATUS_UNINITIALIZED,
     STATUS_UP_TO_DATE,
     TAG_RAY_CLUSTER_NAME,
+    TAG_RAY_LAUNCH_CONFIG,
     TAG_RAY_NODE_KIND,
     TAG_RAY_NODE_NAME,
     TAG_RAY_NODE_STATUS,
@@ -145,7 +147,6 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
             result.raise_for_status()
         return result.json()
 
-
 class ClusterOperatorClient(KubernetesHttpApiClient):
     def __init__(self, cluster_name: str, provider_config: Dict[str, Any]):
         self.cluster_name = cluster_name
@@ -250,6 +251,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                     tag_cache[worker] = new_filters
 
             logger.info(f"Non terminated nodes are {nodes}")
+            logger.info(f"Tags for nodes are: {tag_cache}")
             return nodes, tag_cache
 
     def is_vm_power_on(self, node_id: str) -> bool:
@@ -432,10 +434,10 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         # Do not scale until reaches desired state
         if len(desired_workers) != len(current_workers):
             return False
-        else:
-            for worker in current_workers.values():
-                if worker.get('vm_status', None) != VMNodeStatus.RUNNING.value:
-                    return False
+        # Wait until all nodes are in a Running state
+        for worker in current_workers.values():
+            if worker.get('vm_status', None) != VMNodeStatus.RUNNING.value:
+                return False
 
         return True
 
