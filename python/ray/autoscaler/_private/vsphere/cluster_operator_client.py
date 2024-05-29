@@ -9,8 +9,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
-from ray.autoscaler._private.vsphere.utils import Constants, singleton_client
-from ray.autoscaler._private.vsphere.utils import is_ipv4
+from python.ray.autoscaler._private.vsphere.utils import is_ipv4
+
 from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
     NODE_KIND_WORKER,
@@ -18,7 +18,6 @@ from ray.autoscaler.tags import (
     STATUS_UNINITIALIZED,
     STATUS_UP_TO_DATE,
     TAG_RAY_CLUSTER_NAME,
-    TAG_RAY_LAUNCH_CONFIG,
     TAG_RAY_NODE_KIND,
     TAG_RAY_NODE_NAME,
     TAG_RAY_NODE_STATUS,
@@ -146,6 +145,7 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
         if not result.status_code == 200:
             result.raise_for_status()
         return result.json()
+
 
 class ClusterOperatorClient(KubernetesHttpApiClient):
     def __init__(self, cluster_name: str, provider_config: Dict[str, Any]):
@@ -436,7 +436,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             return False
         # Wait until all nodes are in a Running state
         for worker in current_workers.values():
-            if worker.get('vm_status', None) != VMNodeStatus.RUNNING.value:
+            if worker.get("vm_status", None) != VMNodeStatus.RUNNING.value:
                 return False
 
         return True

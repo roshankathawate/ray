@@ -5,10 +5,8 @@ from typing import Any, Dict
 from ray.autoscaler._private.vsphere.cluster_operator_client import (
     ClusterOperatorClient,
 )
-from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler._private.vsphere.config import bootstrap_vsphere
-
-
+from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
     STATUS_UP_TO_DATE,
     TAG_RAY_CLUSTER_NAME,
@@ -41,7 +39,7 @@ class VmRayNodeProvider(NodeProvider):
                     if node_id in self.tag_cache.keys():
                         self.tag_cache[node_id][k] = v
                     else:
-                        self.tag_cache[node_id]={}
+                        self.tag_cache[node_id] = {}
                         self.tag_cache[node_id][k] = v
         logger.info(f"Non terminated nodes' tags are {self.tag_cache}")
         return nodes
@@ -96,7 +94,9 @@ class VmRayNodeProvider(NodeProvider):
         with self.tag_cache_lock:
             for node_id in created_nodes_dict.keys():
                 self.tag_cache[node_id] = tags.copy()
-                self.tag_cache[node_id][TAG_RAY_LAUNCH_CONFIG] = tags[TAG_RAY_LAUNCH_CONFIG]
+                self.tag_cache[node_id][TAG_RAY_LAUNCH_CONFIG] = tags[
+                    TAG_RAY_LAUNCH_CONFIG
+                ]
                 self.tag_cache[node_id][TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
                 self.tag_cache[node_id][TAG_RAY_NODE_NAME] = node_id
                 self.tag_cache[node_id][TAG_RAY_CLUSTER_NAME] = self.cluster_name

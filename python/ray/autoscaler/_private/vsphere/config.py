@@ -26,19 +26,19 @@ def bootstrap_vsphere(config):
 
     # add_credentials_into_provider_section(config)
     # Update library item configs
-    # update_vsphere_configs(config)
+    update_vsphere_configs(config)
 
     # Log warnings if user included deprecated `head_node` or `worker_nodes`
     # fields. Raise error if no `available_node_types`
     check_legacy_fields(config)
 
-    # Disable NodeUpdater threads 
+    # Disable NodeUpdater threads
     config = disable_node_updater(config)
 
-    # global_event_system.execute_callback(
-    #     CreateClusterEvent.ssh_keypair_downloaded,
-    #     {"ssh_key_path": config["auth"]["ssh_private_key"]},
-    # )
+    global_event_system.execute_callback(
+        CreateClusterEvent.ssh_keypair_downloaded,
+        {"ssh_key_path": config["auth"]["ssh_private_key"]},
+    )
 
     return config
 
@@ -254,8 +254,11 @@ def is_dynamic_passthrough(node_config):
             return True
     return False
 
+
 def disable_node_updater(config):
-    logger.info("Disabling NodeUpdater threads as Cluster Operator is " +
-                "responsible for Ray setup on nodes.")
+    logger.info(
+        "Disabling NodeUpdater threads as Cluster Operator is "
+        + "responsible for Ray setup on nodes."
+    )
     config["provider"][DISABLE_NODE_UPDATERS_KEY] = True
     return config
