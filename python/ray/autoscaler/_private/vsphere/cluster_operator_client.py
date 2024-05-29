@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
-from python.ray.autoscaler._private.vsphere.utils import is_ipv4
+from ray.autoscaler._private.vsphere.utils import is_ipv4
 
 from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
