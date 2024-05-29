@@ -2,6 +2,7 @@ import copy
 import logging
 import os
 
+from ray.autoscaler._private.constants import DISABLE_NODE_UPDATERS_KEY
 from ray.autoscaler._private.event_system import CreateClusterEvent, global_event_system
 from ray.autoscaler._private.util import check_legacy_fields
 
@@ -23,7 +24,7 @@ def bootstrap_vsphere(config):
     # create a copy of the input config to modify
     config = copy.deepcopy(config)
 
-    add_credentials_into_provider_section(config)
+    # add_credentials_into_provider_section(config)
     # Update library item configs
     update_vsphere_configs(config)
 
@@ -31,8 +32,8 @@ def bootstrap_vsphere(config):
     # fields. Raise error if no `available_node_types`
     check_legacy_fields(config)
 
-    # Configure SSH access, using an existing key pair if possible.
-    config = configure_key_pair(config)
+    # Disable NodeUpdater threads
+    config = disable_node_updater(config)
 
     global_event_system.execute_callback(
         CreateClusterEvent.ssh_keypair_downloaded,
@@ -237,10 +238,10 @@ def configure_key_pair(config):
     # Also, copies the file onto the head node
     config["auth"]["ssh_private_key"] = PRIVATE_KEY_PATH
 
-    # The path where the public key should be copied onto the remote host
+    # # The path where the public key should be copied onto the remote host
     public_key_remote_path = "~/{}".format(PUBLIC_KEY_NAME_EXTN)
 
-    # Copy the public key to the remote host
+    # # Copy the public key to the remote host
     config["file_mounts"][public_key_remote_path] = PUBLIC_KEY_PATH
 
     return config
@@ -252,3 +253,12 @@ def is_dynamic_passthrough(node_config):
         if gpu_config and gpu_config["dynamic_pci_passthrough"]:
             return True
     return False
+
+
+def disable_node_updater(config):
+    logger.info(
+        "Disabling NodeUpdater threads as Cluster Operator is "
+        + "responsible for Ray setup on nodes."
+    )
+    config["provider"][DISABLE_NODE_UPDATERS_KEY] = True
+    return config
