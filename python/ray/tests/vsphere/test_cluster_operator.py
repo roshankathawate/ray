@@ -362,6 +362,7 @@ def test_safe_to_scale():
     operator._get_cluster_response = MagicMock(return_value=cluster_response)
     assert operator.safe_to_scale() is True
 
+
 def test__create_node_name():
     """Should create node name for head and worker nodes"""
     operator = mock_cluster_operator()

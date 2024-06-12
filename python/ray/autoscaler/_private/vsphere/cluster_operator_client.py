@@ -1,8 +1,8 @@
 import json
 import logging
 import os
-import uuid
-import random, string
+import random
+import string
 from abc import ABC, abstractmethod
 from enum import Enum
 from threading import RLock
@@ -11,7 +11,6 @@ from typing import Any, Dict, List, Optional, Tuple
 import requests
 
 from ray.autoscaler._private.vsphere.utils import is_ipv4
-
 from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
     NODE_KIND_WORKER,
@@ -331,17 +330,14 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             if to_be_launched_node_count > 0:
                 new_desired_workers = []
                 new_vm_names = []
-                # The nodes are named as follows:
-                # <cluster-name>-head for the head node
-                # <cluster-name>-worker-<uuid> for the worker nodes
-                # Cluster is not exist and need to create a new Head node
+                # TODO: Change in milestone 2
                 if "head" in tags[TAG_RAY_NODE_NAME]:
                     created_nodes_dict[
                         f"{self.cluster_name}-head"
                     ] = f"{self.cluster_name}-head"
                 else:
                     new_vm_names = [
-                        f"{self.cluster_name}-worker-{str(uuid.uuid4())}"
+                        self._create_node_name(tags[TAG_RAY_NODE_NAME])
                         for _ in range(to_be_launched_node_count)
                     ]
                     logger.info(f"Creating new VMs {new_vm_names}")
@@ -449,14 +445,15 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
     def _patch(self, path: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Wrapper for REST PATCH of resource with proper headers."""
         return self.k8s_api_client.patch(path, payload)
-    
+
     def _create_node_name(self, node_name_tag):
         """Create name for a Ray node"""
         # The nodes are named as follows:
         # <cluster-name>-h-<randon alphanumeric string> for the head node
         # <cluster-name>-w-<<randon alphanumeric string>> for the worker nodes
-        random_str = "".join(random.choice(string.ascii_lowercase + string.digits) for _ in range(5))
+        random_str = "".join(
+            random.choice(string.ascii_lowercase + string.digits) for _ in range(5)
+        )
         if "head" in node_name_tag:
-            return f"{self.cluster_name}-h-"+random_str
-        return f"{self.cluster_name}-w-"+random_str
-
+            return f"{self.cluster_name}-h-" + random_str
+        return f"{self.cluster_name}-w-" + random_str
