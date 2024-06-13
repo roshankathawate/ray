@@ -1,5 +1,6 @@
 import copy
 import os
+import re
 
 import pytest
 from threading import RLock
@@ -360,6 +361,20 @@ def test_safe_to_scale():
     cluster_response["spec"]["desired_workers"] = ["test-vm1", "test-vm2"]
     operator._get_cluster_response = MagicMock(return_value=cluster_response)
     assert operator.safe_to_scale() is True
+
+
+def test__create_node_name():
+    """Should create node name for head and worker nodes"""
+    operator = mock_cluster_operator()
+    # test for head node name
+    pattern = re.compile("^(test-h-[a-z0-9]{5})$")
+    node_name = operator._create_node_name("ray-head-node")
+    assert pattern.match(node_name) is not None
+    # test for worker node name
+    pattern = re.compile("^(test-w-[a-z0-9]{5})$")
+    node_name = operator._create_node_name("ray-worker-node")
+    print(node_name)
+    assert pattern.match(node_name) is not None
 
 
 if __name__ == "__main__":
