@@ -452,7 +452,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         # <cluster-name>-h-<random alphanumeric string> for the head node
         # <cluster-name>-w-<<random alphanumeric string>> for the worker nodes
         random_str = "".join(
-            random.choice(string.ascii_lowercase + string.digits) for _ in range(5)
+            random.choice(string.ascii_lowercase + string.digits) for _ in range(8)
         )
         if "head" in node_name_tag:
             return f"{self.cluster_name}-h-" + random_str
