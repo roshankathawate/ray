@@ -449,8 +449,8 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
     def _create_node_name(self, node_name_tag):
         """Create name for a Ray node"""
         # The nodes are named as follows:
-        # <cluster-name>-h-<randon alphanumeric string> for the head node
-        # <cluster-name>-w-<<randon alphanumeric string>> for the worker nodes
+        # <cluster-name>-h-<random alphanumeric string> for the head node
+        # <cluster-name>-w-<<random alphanumeric string>> for the worker nodes
         random_str = "".join(
             random.choice(string.ascii_lowercase + string.digits) for _ in range(5)
         )
