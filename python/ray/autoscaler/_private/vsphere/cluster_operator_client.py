@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from threading import RLock
 from typing import Any, Dict, List, Optional, Tuple
+from kubernetes import client, config
 
 import requests
 
@@ -23,129 +24,57 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_STATUS,
     TAG_RAY_USER_NODE_TYPE,
 )
+import yaml
 
 # Design:
 
 # Each modification the autoscaler wants to make is posted to the API server desired
-# state (e.g. if the autoscaler wants to scale up, it adds VM name  to the desired
+# state (e.g. if the autoscaler wants to scale up, it adds VM name to the desired
 # worker list it wants to scale, if it wants to scale down it removes the name from
 # the list).
 
 # VMRay CRD version
 VMRAY_CRD_VER = os.getenv("VMRAY_CRD_VER", "v1alpha1")
+VMRAY_GROUP = "vmray.broadcom.com"
+VMRAYCLUSTER_PLURAL= "vmrayclusters"
+VMNODE_CONFIG_PLURAL = "vmraynodeconfigs"
 
-SERVICE_ACCOUNT_TOKEN = os.getenv("SVC_ACCOUNT_TOKEN")
+SERVICE_ACCOUNT_TOKEN = os.getenv("SVC_ACCOUNT_TOKEN", None)
 
 DEFAULT_HEAD_NODE_TYPE = "ray.head.default"
 DEFAULT_WORKER_NODE_TYPE = "worker"
 
 
 logger = logging.getLogger(__name__)
-
-
-def url_from_resource(api_server: str, namespace: str, path: str) -> str:
-    """Convert resource path to REST URL for Kubernetes API server.
-
-    Args:
-        namespace: The K8s namespace of the resource
-        path: The part of the resource path that starts with the resource type.
-            Supported resource types are "vms" and "rayclusters".
-    """
-    if path.startswith("vmrayclusters"):
-        api_group = "/apis/vmray.broadcom.com/" + VMRAY_CRD_VER
-    else:
-        raise NotImplementedError("Tried to access unknown entity at {}".format(path))
-    return "https://" + api_server + api_group + "/namespaces/" + namespace + "/" + path
-
+cur_path = os.path.dirname(__file__)
 
 class VMNodeStatus(Enum):
     INITIALIZED = "initialized"
     RUNNING = "running"
     FAIL = "failure"
 
-
-class IKubernetesHttpApiClient(ABC):
-    """
-    An interface for a Kubernetes HTTP API client.
-
-    This interface could be used to mock the Kubernetes API client in tests.
-    """
-
-    @abstractmethod
-    def get(self, path: str) -> Dict[str, Any]:
-        """Wrapper for REST GET of resource with proper headers."""
-        pass
-
-    @abstractmethod
-    def patch(self, path: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Wrapper for REST PATCH of resource with proper headers."""
-        pass
-
-
-class KubernetesHttpApiClient(IKubernetesHttpApiClient):
-    def __init__(self, namespace: str, ca_cert: str, api_server: str):
-        self._ca_cert = ca_cert
-        self._api_server = api_server
-        self._namespace = namespace
-
+class KubernetesHttpApiClient(object):
+    def __init__(self, ca_cert: str, api_server: str):
         token = SERVICE_ACCOUNT_TOKEN
-
-        headers = {
-            "Authorization": "Bearer " + token,
-        }
-        self._headers = headers
-        self._verify = self._ca_cert
-
-    def get(self, path: str) -> Dict[str, Any]:
-        """Wrapper for REST GET of resource with proper headers.
-
-        Args:
-            path: The part of the resource path that starts with the resource type.
-
-        Returns:
-            The JSON response of the GET request.
-
-        Raises:
-            HTTPError: If the GET request fails.
-        """
-        url = url_from_resource(
-            api_server=self._api_server,
-            namespace=self._namespace,
-            path=path,
-        )
-        result = requests.get(url, headers=self._headers, verify=False)
-        if not result.status_code == 200:
-            result.raise_for_status()
-        return result.json()
-
-    def patch(self, path: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Wrapper for REST PATCH of resource with proper headers
-
-        Args:
-            path: The part of the resource path that starts with the resource type.
-            payload: The JSON patch payload.
-
-        Returns:
-            The JSON response of the PATCH request.
-
-        Raises:
-            HTTPError: If the PATCH request fails.
-        """
-        url = url_from_resource(
-            api_server=self._api_server,
-            namespace=self._namespace,
-            path=path,
-        )
-        result = requests.patch(
-            url,
-            json.dumps(payload),
-            headers={**self._headers, "Content-type": "application/json-patch+json"},
-            verify=False,
-        )
-        if not result.status_code == 200:
-            result.raise_for_status()
-        return result.json()
-
+        # If SERVICE_ACCOUNT_TOKEN not present, use local
+        # ~/.kube/config file. Active context will be used.
+        # This is usefull when Ray CLI are used and local autoscaler needs
+        # communicate with the k8s API server
+        # If the token is present then use that for communication.
+        if not token:
+            self.client = client.ApiClient(config.load_kube_config())
+        else:
+            configuration = client.Configuration()
+            configuration.api_key["authorization"] = token
+            configuration.api_key_prefix['authorization'] = 'Bearer'
+            configuration.host = f'https://{api_server}'
+            if ca_cert:
+                configuration.ssl_ca_cert = ca_cert
+            else:
+                configuration.verify_ssl = False
+                self.client = client.ApiClient(configuration)
+        # Use customObjectsApi to access custom resources
+        self.customObjectApi = client.CustomObjectsApi(self.client)
 
 class ClusterOperatorClient(KubernetesHttpApiClient):
     def __init__(self, cluster_name: str, provider_config: Dict[str, Any]):
@@ -154,12 +83,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         self.max_worker_nodes = None
         self.min_worker_nodes = None
         self.namespace = self.supervisor_cluster_config["namespace"]
-        assert (
-            SERVICE_ACCOUNT_TOKEN is not None
-        ), "To use vSphereNodeProvider, must set SVC_ACCOUNT_TOKEN env variable."
-
         self.k8s_api_client = KubernetesHttpApiClient(
-            self.namespace,
             self.supervisor_cluster_config.get("ca_cert"),
             self.supervisor_cluster_config.get("api_server"),
         )
@@ -169,73 +93,48 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         """Queries K8s for VMs in the RayCluster and filter them as per
         tags provided in the tag_filters.
         """
+        logger.info(f"Getting nodes using tags \n{tag_filters}")
         tag_cache = {}
         with self.lock:
             filters = tag_filters.copy()
             if TAG_RAY_CLUSTER_NAME not in tag_filters:
                 filters[TAG_RAY_CLUSTER_NAME] = self.cluster_name
-            nodes = []  # list of VM IDs
+            nodes = []  
             vmray_cluster_response = None
-            try:
-                vmray_cluster_response = self._get_cluster_response()
-                if not self.max_worker_nodes:
-                    vmray_cluster_spec = vmray_cluster_response.get("spec", {})
-                    worker_node_config = vmray_cluster_spec.get("worker_node", {})
-                    # If min_workers and max_workers are not provided then default to 0
-                    self.min_worker_nodes = worker_node_config.get("min_workers", 0)
-                    self.max_worker_nodes = worker_node_config.get(
-                        "max_workers", self.min_worker_nodes
-                    )
-                    logger.info(
-                        f"Min and max workers set to {self.min_worker_nodes}"
-                        f"and {self.max_worker_nodes} respectively."
-                    )
-            except requests.exceptions.HTTPError as e:
-                # If HTTP 404 received means the cluster is not yet created.
-                if e.response.status_code == 404:
-                    return nodes, tag_cache
-                raise e
+            vmray_cluster_response = self._get_cluster_response()
+            if not vmray_cluster_response:
+                return nodes, tag_cache
+                
             vmray_cluster_status = vmray_cluster_response.get("status", {})
             if not vmray_cluster_status:
                 return nodes, tag_cache
+            
+            #Check for a head node
             if NODE_KIND_HEAD in tag_filters.values() or not tag_filters:
                 head_node_status = vmray_cluster_status.get("head_node_status", {})
-                # head node is found
+                # head node found
                 if head_node_status:
-                    node_id = f"{self.cluster_name}-head"
+                    node_id = f"{self.cluster_name}-h-" + "1" #TODO: Change this
                     nodes.append(node_id)
-                    new_filters = filters.copy()
+                    
                     # Setting head node status
                     status = head_node_status.get("vm_status", None)
-                    if status == VMNodeStatus.RUNNING.value:
-                        new_filters[TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
-                    elif status == VMNodeStatus.INITIALIZED.value:
-                        new_filters[TAG_RAY_NODE_STATUS] = STATUS_SETTING_UP
-                    else:
-                        new_filters[TAG_RAY_NODE_STATUS] = STATUS_UNINITIALIZED
-
-                    new_filters[TAG_RAY_NODE_NAME] = node_id
-                    new_filters[TAG_RAY_NODE_KIND] = NODE_KIND_HEAD
-                    new_filters[TAG_RAY_USER_NODE_TYPE] = DEFAULT_HEAD_NODE_TYPE
-                    tag_cache[node_id] = new_filters
+                    tags = self._set_tags(node_id, NODE_KIND_HEAD, filters[TAG_RAY_USER_NODE_TYPE],
+                                   status, filters)
+                    
+                    tag_cache[node_id] = tags
+            # Check current worker nodes 
             if NODE_KIND_WORKER in tag_filters.values() or not tag_filters:
                 current_workers = vmray_cluster_status.get("current_workers", {})
                 # worker nodes found
                 for worker in current_workers.keys():
                     nodes.append(worker)
-                    new_filters = filters.copy()
                     # setting worker node status
                     status = current_workers[worker].get("vm_status", None)
-                    if status == VMNodeStatus.RUNNING.value:
-                        new_filters[TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
-                    elif status == VMNodeStatus.INITIALIZED.value:
-                        new_filters[TAG_RAY_NODE_STATUS] = STATUS_SETTING_UP
-                    else:
-                        new_filters[TAG_RAY_NODE_STATUS] = STATUS_UNINITIALIZED
-                    new_filters[TAG_RAY_NODE_NAME] = worker
-                    new_filters[TAG_RAY_NODE_KIND] = NODE_KIND_WORKER
-                    new_filters[TAG_RAY_USER_NODE_TYPE] = DEFAULT_WORKER_NODE_TYPE
-                    tag_cache[worker] = new_filters
+                    tags = self._set_tags(node_id, NODE_KIND_WORKER, filters[TAG_RAY_USER_NODE_TYPE],
+                                   status, filters)
+                    
+                    tag_cache[node_id] = tags
                 # List VMs from the desired workers' list
                 vmray_cluster_spec = vmray_cluster_response.get("spec", {})
                 desired_workers = vmray_cluster_spec.get("desired_workers", [])
@@ -243,12 +142,9 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                     if worker in current_workers.keys():
                         continue
                     nodes.append(worker)
-                    new_filters = filters.copy()
-                    new_filters[TAG_RAY_NODE_STATUS] = STATUS_SETTING_UP
-                    new_filters[TAG_RAY_NODE_NAME] = worker
-                    new_filters[TAG_RAY_NODE_KIND] = NODE_KIND_WORKER
-                    new_filters[TAG_RAY_USER_NODE_TYPE] = DEFAULT_WORKER_NODE_TYPE
-                    tag_cache[worker] = new_filters
+                    tags = self._set_tags(worker, NODE_KIND_WORKER, filters[TAG_RAY_USER_NODE_TYPE],
+                                   STATUS_SETTING_UP, filters)
+                    tag_cache[worker] = tags
 
             logger.info(f"Non terminated nodes are {nodes}")
             logger.info(f"Tags for nodes are: {tag_cache}")
@@ -316,31 +212,40 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                         "value": new_desired_workers,
                     }
                 ]
-                self._patch(path, payload)
+                self.k8s_api_client.customObjectApi.patch_namespaced_custom_object(VMRAY_GROUP,VMRAY_CRD_VER,
+                                                                                       self.namespace,VMRAYCLUSTER_PLURAL,
+                                                                                       self.cluster_name, payload,
+                                                                                       async_req=True)
 
     def create_nodes(
         self,
         tags: Dict[str, str],
         to_be_launched_node_count: int,
+        node_config: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         """Ask cluster operator to create worker VMs"""
         logger.info(f"Creating {to_be_launched_node_count} nodes.")
+        logger.info(f"Creating nodes with tags: {tags}")
+        logger.info(f"Creating nodes with config: {node_config}")
         created_nodes_dict = {}
         with self.lock:
             if to_be_launched_node_count > 0:
                 new_desired_workers = []
-                new_vm_names = []
-                # TODO: Change in milestone 2
-                if "head" in tags[TAG_RAY_NODE_NAME]:
-                    created_nodes_dict[
-                        f"{self.cluster_name}-head"
-                    ] = f"{self.cluster_name}-head"
-                else:
-                    new_vm_names = [
+                new_vm_names = [
                         self._create_node_name(tags[TAG_RAY_NODE_NAME])
                         for _ in range(to_be_launched_node_count)
                     ]
-                    logger.info(f"Creating new VMs {new_vm_names}")
+                # First create VMNodeConfig CR if not created
+                node_config_name = tags[TAG_RAY_USER_NODE_TYPE]
+                if not self._is_node_config_available(node_config_name):
+                    self._create_node_config(node_config_name)
+                #Create a head node
+                if "head" in tags[TAG_RAY_NODE_NAME]:
+                     # head node will be created as a part of VMRayCluster CR
+                    self._create_vmraycluster(node_config_name)
+                else:
+                    # Once VMRayCluster CR is created, update it to create worker 
+                    # nodes.
                     vmray_cluster_response = self._get_cluster_response()
                     vmray_cluster_spec = vmray_cluster_response.get("spec", {})
                     logger.info(f"Cluster response: {vmray_cluster_response}")
@@ -358,7 +263,6 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                         )
                         return created_nodes_dict
                     logger.info(f"Adding VMs to desired VMs list: {new_vm_names}")
-                    path = f"vmrayclusters/{self.cluster_name}"
                     payload = [
                         {
                             "op": "replace",
@@ -366,14 +270,27 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                             "value": new_desired_workers,
                         }
                     ]
-                    self._patch(path, payload)
-                    for vm in new_vm_names:
-                        created_nodes_dict[vm] = vm
+                    self.k8s_api_client.customObjectApi.patch_namespaced_custom_object(VMRAY_GROUP,VMRAY_CRD_VER, 
+                                                                                       self.namespace,VMRAYCLUSTER_PLURAL,
+                                                                                       self.cluster_name, payload,
+                                                                                       async_req=True)
+                for vm in new_vm_names:
+                    created_nodes_dict[vm] = vm
             return created_nodes_dict
-
+    
     def _get_cluster_response(self):
         with self.lock:
-            return self._get(f"vmrayclusters/{self.cluster_name}")
+            response = None
+            try:
+                response = self.k8s_api_client.customObjectApi.\
+                get_namespaced_custom_object(VMRAY_GROUP,VMRAY_CRD_VER, self.namespace,VMRAYCLUSTER_PLURAL, self.cluster_name)
+                return response
+            except client.exceptions.ApiException as e:
+                # If HTTP 404 received means the cluster is not yet created.
+                if e.status == 404:
+                    logger.warning(f"{self.cluster_name} not available. Creating new one.")
+                    return response
+                raise e
 
     def _get_node(self, node_id: str) -> Any:
         vmray_cluster_response = self._get_cluster_response()
@@ -383,7 +300,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         head_node_status = vmray_cluster_status.get("head_node_status", {})
         current_workers = vmray_cluster_status.get("current_workers", {})
         # head node is found
-        if head_node_status and node_id == self.cluster_name + "-head":
+        if head_node_status and node_id == self.cluster_name + "-h-1":
             return head_node_status
         # worker nodes found
         for worker in current_workers.keys():
@@ -415,7 +332,6 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         and we should wait.
         3. If workers are present in both the list shows stable state for the cluster.
         """
-        # return True
         vmray_cluster_response = self._get_cluster_response()
         vmray_cluster_status = vmray_cluster_response.get("status", {})
         if not vmray_cluster_status:
@@ -438,14 +354,6 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
 
         return True
 
-    def _get(self, path: str) -> Dict[str, Any]:
-        """Wrapper for REST GET of resource with proper headers."""
-        return self.k8s_api_client.get(path)
-
-    def _patch(self, path: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Wrapper for REST PATCH of resource with proper headers."""
-        return self.k8s_api_client.patch(path, payload)
-
     def _create_node_name(self, node_name_tag):
         """Create name for a Ray node"""
         # The nodes are named as follows:
@@ -455,5 +363,69 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             random.choice(string.ascii_lowercase + string.digits) for _ in range(8)
         )
         if "head" in node_name_tag:
-            return f"{self.cluster_name}-h-" + random_str
+            return f"{self.cluster_name}-h-" + "1"
         return f"{self.cluster_name}-w-" + random_str
+    
+    def _is_node_config_available(self, node_type: str):
+        """Check if node config for a given node type is available or not"""
+        node_configs = self.k8s_api_client.customObjectApi.list_namespaced_custom_object(VMRAY_GROUP, VMRAY_CRD_VER, self.namespace, VMNODE_CONFIG_PLURAL)
+        for node_config in node_configs:
+            # NodeConfig name is same as the node_type provided in the cluster config
+            if node_config["NodeConfigName"] == node_type:
+                return True
+        return False
+    
+    def _create_node_config(self, node_config_name):
+        """Create a node config"""
+        node_config = None
+        nodeconfig_path = os.path.join(cur_path, "crd/vmray_v1alpha1_vmraynodeconfig.yaml")
+        with open(nodeconfig_path,"r") as file:
+            node_config = yaml.safe_load(file)
+            node_config["metadata"]["name"] = node_config_name
+            node_config["metadata"]["namespace"] = self.namespace
+            logger.info(f"Creating nodeconfig \n{node_config}")
+        self.k8s_api_client.customObjectApi.create_namespaced_custom_object(VMRAY_GROUP, VMRAY_CRD_VER, self.namespace, VMNODE_CONFIG_PLURAL, node_config)
+
+    def _create_vmraycluster(self, head_node_config_name):
+        ray_cluster_config = None
+        raycluster_config_path = os.path.join(cur_path, "crd/vmray_v1alpha1_vmraycluster.yaml")
+        with open(raycluster_config_path, "r") as file:
+            ray_cluster_config = yaml.safe_load(file)
+            ray_cluster_config["metadata"]["name"] = "ray-cluster-1"
+            ray_cluster_config["metadata"]["namespace"] = self.namespace
+            ray_cluster_config["spec"]["api_server"]["location"] = self.supervisor_cluster_config.get("api_server")
+            ray_cluster_config["spec"]["head_node"]["node_config_name"] = head_node_config_name
+        logger.info(f"Creating VmRayCluster \n{ray_cluster_config}")
+        self.k8s_api_client.customObjectApi.create_namespaced_custom_object(VMRAY_GROUP, VMRAY_CRD_VER, self.namespace, VMRAYCLUSTER_PLURAL, ray_cluster_config)
+    
+    def _set_tags(self, node_id, node_kind, node_user_type, node_status, tags):
+        new_tags = tags.copy()
+        if NODE_KIND_HEAD == node_kind or not new_tags:
+            if node_status == VMNodeStatus.RUNNING.value:
+                new_tags[TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
+            elif node_status == VMNodeStatus.INITIALIZED.value:
+                new_tags[TAG_RAY_NODE_STATUS] = STATUS_SETTING_UP
+            else:
+                new_tags[TAG_RAY_NODE_STATUS] = STATUS_UNINITIALIZED
+
+            new_tags[TAG_RAY_NODE_NAME] = node_id
+            new_tags[TAG_RAY_NODE_KIND] = node_kind
+            new_tags[TAG_RAY_USER_NODE_TYPE] = node_user_type
+            return new_tags
+    
+    def _set_min_max_worker_nodes(self):
+        vmray_cluster_response = self._get_cluster_response()
+        if not self.max_worker_nodes:
+            vmray_cluster_spec = vmray_cluster_response.get("spec", {})
+            worker_node_config = vmray_cluster_spec.get("worker_node", {})
+            # If min_workers and max_workers are not provided then default to 0
+            self.min_worker_nodes = worker_node_config.get("min_workers", 0)
+            self.max_worker_nodes = worker_node_config.get(
+                "max_workers", self.min_worker_nodes
+            )
+            logger.info(
+                f"Min and max workers set to {self.min_worker_nodes}"
+                f"and {self.max_worker_nodes} respectively."
+            )
+
+

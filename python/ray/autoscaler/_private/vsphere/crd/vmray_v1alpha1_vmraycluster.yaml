@@ -1,0 +1,20 @@
+apiVersion: vmray.broadcom.com/v1alpha1
+kind: VMRayCluster
+metadata:
+  name: ray-cluster-test
+  namespace: <SUPERVISOR_NAMESPACE>
+spec:
+  desired_workers: []
+  api_server:
+    ca_cert: ""
+    location: <CPVM_IP>
+  head_node:
+    setup_commands: []
+    port: 6245
+    node_config_name: ray-nodeconfig-1
+  image: project-taiga-docker-local.artifactory.eng.vmware.com/development/ray:milestone_1
+  worker_node:
+    max_workers: 3
+    min_workers: 1
+    node_config_name: ray-nodeconfig-1
+    idle_timeout_minutes: 5
