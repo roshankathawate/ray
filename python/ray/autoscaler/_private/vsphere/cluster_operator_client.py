@@ -42,7 +42,7 @@ VMNODE_CONFIG_PLURAL = "vmraynodeconfigs"
 SERVICE_ACCOUNT_TOKEN = os.getenv("SVC_ACCOUNT_TOKEN", None)
 
 DEFAULT_HEAD_NODE_TYPE = "ray.head.default"
-DEFAULT_WORKER_NODE_TYPE = "worker"
+DEFAULT_WORKER_NODE_TYPE = "ray.worker.default"
 
 
 logger = logging.getLogger(__name__)
@@ -79,9 +79,17 @@ class KubernetesHttpApiClient(object):
 class ClusterOperatorClient(KubernetesHttpApiClient):
     def __init__(self, cluster_name: str, provider_config: Dict[str, Any]):
         self.cluster_name = cluster_name
+        self.vmraycluster_nounce = None
         self.supervisor_cluster_config = provider_config["vsphere_config"]
-        self.max_worker_nodes = None
-        self.min_worker_nodes = None
+        self.max_worker_nodes = provider_config["max_workers"]
+        self.min_worker_nodes = provider_config["min_workers"]
+        self.head_setup_commands = provider_config["head_setup_commands"]
+        self.available_node_types = provider_config["available_node_types"]
+
+        # docker configurations.
+        self.provider_auth = provider_config["auth"]
+        self.docker = provider_config["docker"]
+
         self.namespace = self.supervisor_cluster_config["namespace"]
         self.k8s_api_client = KubernetesHttpApiClient(
             self.supervisor_cluster_config.get("ca_cert"),
@@ -99,8 +107,8 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             filters = tag_filters.copy()
             if TAG_RAY_CLUSTER_NAME not in tag_filters:
                 filters[TAG_RAY_CLUSTER_NAME] = self.cluster_name
+
             nodes = []  
-            vmray_cluster_response = None
             vmray_cluster_response = self._get_cluster_response()
             if not vmray_cluster_response:
                 return nodes, tag_cache
@@ -116,35 +124,36 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 if head_node_status:
                     node_id = f"{self.cluster_name}-h-" + "1" #TODO: Change this
                     nodes.append(node_id)
-                    
+
                     # Setting head node status
                     status = head_node_status.get("vm_status", None)
-                    tags = self._set_tags(node_id, NODE_KIND_HEAD, filters[TAG_RAY_USER_NODE_TYPE],
-                                   status, filters)
-                    
-                    tag_cache[node_id] = tags
+                    tag_cache[node_id] = self._set_tags(node_id, NODE_KIND_HEAD, DEFAULT_HEAD_NODE_TYPE,
+                                                        status, filters)
+
             # Check current worker nodes 
             if NODE_KIND_WORKER in tag_filters.values() or not tag_filters:
                 current_workers = vmray_cluster_status.get("current_workers", {})
+                vmray_cluster_spec = vmray_cluster_response.get("spec", {})
+                desired_workers = vmray_cluster_spec.get("autoscaler_desired_workers", {})
+
                 # worker nodes found
                 for worker in current_workers.keys():
                     nodes.append(worker)
                     # setting worker node status
                     status = current_workers[worker].get("vm_status", None)
-                    tags = self._set_tags(node_id, NODE_KIND_WORKER, filters[TAG_RAY_USER_NODE_TYPE],
-                                   status, filters)
-                    
-                    tag_cache[node_id] = tags
+                    node_type = desired_workers.get(worker, DEFAULT_WORKER_NODE_TYPE)
+
+                    tag_cache[worker] = self._set_tags(worker, NODE_KIND_WORKER, node_type,
+                                                       status, filters)
+
                 # List VMs from the desired workers' list
-                vmray_cluster_spec = vmray_cluster_response.get("spec", {})
-                desired_workers = vmray_cluster_spec.get("desired_workers", [])
-                for worker in desired_workers:
+                for worker in desired_workers.keys():
                     if worker in current_workers.keys():
                         continue
                     nodes.append(worker)
-                    tags = self._set_tags(worker, NODE_KIND_WORKER, filters[TAG_RAY_USER_NODE_TYPE],
-                                   STATUS_SETTING_UP, filters)
-                    tag_cache[worker] = tags
+                    node_type = desired_workers.get(worker, DEFAULT_WORKER_NODE_TYPE)
+                    tag_cache[worker] = self._set_tags(worker, NODE_KIND_WORKER, node_type,
+                                                       STATUS_SETTING_UP, filters)
 
             logger.info(f"Non terminated nodes are {nodes}")
             logger.info(f"Tags for nodes are: {tag_cache}")
@@ -193,29 +202,28 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         with self.lock:
             vmray_cluster_response = self._get_cluster_response()
             vmray_cluster_spec = vmray_cluster_response.get("spec", {})
+
             # get desired workers
-            current_desired_workers = set(vmray_cluster_spec.get("desired_workers", []))
+            current_desired_workers = vmray_cluster_spec.get("autoscaler_desired_workers", {})
             logger.info(f"Current desired VMs {current_desired_workers}")
             new_desired_workers = current_desired_workers.copy()
+
             # remove the node from the desired workers list
-            new_desired_workers.discard(node_id)
-            new_desired_workers = list(new_desired_workers)
+            new_desired_workers.pop(node_id)
             logger.info(f"New desired VMs {new_desired_workers}")
+
             # Make sure node was present and deleted from the desired workers list
             if len(new_desired_workers) < len(current_desired_workers):
-                logger.info(f"Deleting VM {node_id}")
-                path = f"vmrayclusters/{self.cluster_name}"
-                payload = [
-                    {
-                        "op": "replace",
-                        "path": "/spec/desired_workers",
-                        "value": new_desired_workers,
+                payload = {
+                    "spec": {
+                        "autoscaler_desired_workers": new_desired_workers
                     }
-                ]
+                }
+                logger.info(f"Deleting VM {node_id} | payload: {new_desired_workers}")
                 self.k8s_api_client.customObjectApi.patch_namespaced_custom_object(VMRAY_GROUP,VMRAY_CRD_VER,
                                                                                        self.namespace,VMRAYCLUSTER_PLURAL,
                                                                                        self.cluster_name, payload,
-                                                                                       async_req=True)
+                                                                                       async_req=False)
 
     def create_nodes(
         self,
@@ -230,50 +238,48 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         created_nodes_dict = {}
         with self.lock:
             if to_be_launched_node_count > 0:
-                new_desired_workers = []
-                new_vm_names = [
-                        self._create_node_name(tags[TAG_RAY_NODE_NAME])
-                        for _ in range(to_be_launched_node_count)
-                    ]
+                new_desired_workers = {}
+
                 # First create VMNodeConfig CR if not created
-                node_config_name = tags[TAG_RAY_USER_NODE_TYPE]
-                if not self._is_node_config_available(node_config_name):
-                    self._create_node_config(node_config_name)
-                #Create a head node
+                new_vm_names = {}
+                for _ in range(to_be_launched_node_count):
+                    name = self._create_node_name(tags[TAG_RAY_NODE_NAME])
+                    new_vm_names[name] = tags[TAG_RAY_USER_NODE_TYPE]
+
+                # Create a head node
                 if "head" in tags[TAG_RAY_NODE_NAME]:
                      # head node will be created as a part of VMRayCluster CR
-                    self._create_vmraycluster(node_config_name)
+                    self._create_vmraycluster()
                 else:
                     # Once VMRayCluster CR is created, update it to create worker 
                     # nodes.
                     vmray_cluster_response = self._get_cluster_response()
                     vmray_cluster_spec = vmray_cluster_response.get("spec", {})
-                    logger.info(f"Cluster response: {vmray_cluster_response}")
+
                     # get desired workers
-                    desired_workers = vmray_cluster_spec.get("desired_workers", [])
+                    desired_workers = vmray_cluster_spec.get("autoscaler_desired_workers", {})
+
                     # If workers are present in both the list then it shows stable
                     # state for the cluster.
                     # Append new VM names with existing one
                     if desired_workers:
-                        new_desired_workers.extend(desired_workers)
-                    new_desired_workers.extend(new_vm_names)
+                        new_desired_workers.update(desired_workers)
+                    new_desired_workers.update(new_vm_names)
                     if len(new_desired_workers) > self.max_worker_nodes:
                         logger.warning(
                             "Autoscaler attempted to create more than max_workers VMs."
                         )
                         return created_nodes_dict
-                    logger.info(f"Adding VMs to desired VMs list: {new_vm_names}")
-                    payload = [
-                        {
-                            "op": "replace",
-                            "path": "/spec/desired_workers",
-                            "value": new_desired_workers,
+                    payload = {
+                        "spec": {
+                            "autoscaler_desired_workers": new_desired_workers
                         }
-                    ]
+                    }
+                    logger.info(f"Adding VMs to desired VMs list: {new_vm_names}")
                     self.k8s_api_client.customObjectApi.patch_namespaced_custom_object(VMRAY_GROUP,VMRAY_CRD_VER, 
                                                                                        self.namespace,VMRAYCLUSTER_PLURAL,
                                                                                        self.cluster_name, payload,
-                                                                                       async_req=True)
+                                                                                       async_req=False)
                 for vm in new_vm_names:
                     created_nodes_dict[vm] = vm
             return created_nodes_dict
@@ -309,8 +315,8 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         # If worker not found in the current worker then it might be getting created
         # and not yet ready. So check if it is in the desired workers list.
         vmray_cluster_spec = vmray_cluster_response.get("spec", {})
-        desired_workers = vmray_cluster_spec.get("desired_workers", [])
-        for worker in desired_workers:
+        desired_workers = vmray_cluster_spec.get("autoscaler_desired_workers", {})
+        for worker in desired_workers.keys():
             if worker == node_id:
                 # set vm_status as VM in the desired workers' list will not
                 # have vm_status field.
@@ -338,15 +344,17 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             return False
         current_workers = vmray_cluster_status.get("current_workers", {})
         vmray_cluster_spec = vmray_cluster_response.get("spec", {})
-        desired_workers = vmray_cluster_spec.get("desired_workers", [])
+        desired_workers = vmray_cluster_spec.get("autoscaler_desired_workers", {})
         logger.info(
             f"Checking is it safe to scale:\n"
             f"Current workers: {current_workers.keys()} \n and \n"
-            f"Desired workers: {desired_workers}"
+            f"Autoscaler desired workers: {desired_workers}"
         )
+
         # Do not scale until reaches desired state
         if len(desired_workers) != len(current_workers):
             return False
+
         # Wait until all nodes are in a Running state
         for worker in current_workers.values():
             if worker.get("vm_status", None) != VMNodeStatus.RUNNING.value:
@@ -363,69 +371,55 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             random.choice(string.ascii_lowercase + string.digits) for _ in range(8)
         )
         if "head" in node_name_tag:
-            return f"{self.cluster_name}-h-" + "1"
+            self.vmraycluster_nounce = random_str
+            return f"{self.cluster_name}-h-" + self.vmraycluster_nounce
         return f"{self.cluster_name}-w-" + random_str
-    
-    def _is_node_config_available(self, node_type: str):
-        """Check if node config for a given node type is available or not"""
-        node_configs = self.k8s_api_client.customObjectApi.list_namespaced_custom_object(VMRAY_GROUP, VMRAY_CRD_VER, self.namespace, VMNODE_CONFIG_PLURAL)
-        for node_config in node_configs:
-            # NodeConfig name is same as the node_type provided in the cluster config
-            if node_config["NodeConfigName"] == node_type:
-                return True
-        return False
-    
-    def _create_node_config(self, node_config_name):
-        """Create a node config"""
-        node_config = None
-        nodeconfig_path = os.path.join(cur_path, "crd/vmray_v1alpha1_vmraynodeconfig.yaml")
-        with open(nodeconfig_path,"r") as file:
-            node_config = yaml.safe_load(file)
-            node_config["metadata"]["name"] = node_config_name
-            node_config["metadata"]["namespace"] = self.namespace
-            logger.info(f"Creating nodeconfig \n{node_config}")
-        self.k8s_api_client.customObjectApi.create_namespaced_custom_object(VMRAY_GROUP, VMRAY_CRD_VER, self.namespace, VMNODE_CONFIG_PLURAL, node_config)
 
-    def _create_vmraycluster(self, head_node_config_name):
+    def _create_vmraycluster(self):
         ray_cluster_config = None
         raycluster_config_path = os.path.join(cur_path, "crd/vmray_v1alpha1_vmraycluster.yaml")
         with open(raycluster_config_path, "r") as file:
             ray_cluster_config = yaml.safe_load(file)
-            ray_cluster_config["metadata"]["name"] = "ray-cluster-1"
+            ray_cluster_config["metadata"]["name"] = self.cluster_name
             ray_cluster_config["metadata"]["namespace"] = self.namespace
             ray_cluster_config["spec"]["api_server"]["location"] = self.supervisor_cluster_config.get("api_server")
-            ray_cluster_config["spec"]["head_node"]["node_config_name"] = head_node_config_name
+            ray_cluster_config["ray_docker_image"] = self.docker["image"]
+
+            # Set head node specific config.
+            ray_cluster_config["spec"]["head_node"] = {}
+            ray_cluster_config["spec"]["head_node"]["head_setup_commands"] = self.head_setup_commands
+            ray_cluster_config["spec"]["head_node"]["port"] = 6379 # using default GCS port for now.
+            ray_cluster_config["spec"]["head_node"]["vm_class"] = self.available_node_types[DEFAULT_HEAD_NODE_TYPE]["node_config"]["vm_class"]
+
+            # Set common node config & available node types.
+            ray_cluster_config["spec"]["common_node_config"] = {}
+            ray_cluster_config["spec"]["common_node_config"]["vm_image"] = self.supervisor_cluster_config.get("vm_image")
+            ray_cluster_config["spec"]["common_node_config"]["storage_class"] = self.supervisor_cluster_config.get("storage_policy")
+            ray_cluster_config["spec"]["common_node_config"]["max_workers"] = self.max_worker_nodes
+            ray_cluster_config["spec"]["common_node_config"]["min_workers"] = self.min_worker_nodes
+            ray_cluster_config["spec"]["common_node_config"]["available_node_types"] = self.available_node_types
+
+            # Node auth configuration
+            # TODO: How do we pass ssh private key ? should it be a field only used by
+            # autoscaler if so find a better way to pass rather than bootstrap json.
+            ray_cluster_config["spec"]["common_node_config"]["vm_user"] = self.provider_auth["ssh_user"]
+            ray_cluster_config["spec"]["common_node_config"]["vm_password_salt_hash"] = self.provider_auth["ssh_password_hash"]
+
         logger.info(f"Creating VmRayCluster \n{ray_cluster_config}")
         self.k8s_api_client.customObjectApi.create_namespaced_custom_object(VMRAY_GROUP, VMRAY_CRD_VER, self.namespace, VMRAYCLUSTER_PLURAL, ray_cluster_config)
     
     def _set_tags(self, node_id, node_kind, node_user_type, node_status, tags):
         new_tags = tags.copy()
-        if NODE_KIND_HEAD == node_kind or not new_tags:
-            if node_status == VMNodeStatus.RUNNING.value:
-                new_tags[TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
-            elif node_status == VMNodeStatus.INITIALIZED.value:
-                new_tags[TAG_RAY_NODE_STATUS] = STATUS_SETTING_UP
-            else:
-                new_tags[TAG_RAY_NODE_STATUS] = STATUS_UNINITIALIZED
+        if node_status == VMNodeStatus.RUNNING.value:
+            new_tags[TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
+        elif node_status == VMNodeStatus.INITIALIZED.value:
+            new_tags[TAG_RAY_NODE_STATUS] = STATUS_SETTING_UP
+        else:
+            new_tags[TAG_RAY_NODE_STATUS] = STATUS_UNINITIALIZED
 
-            new_tags[TAG_RAY_NODE_NAME] = node_id
-            new_tags[TAG_RAY_NODE_KIND] = node_kind
-            new_tags[TAG_RAY_USER_NODE_TYPE] = node_user_type
-            return new_tags
-    
-    def _set_min_max_worker_nodes(self):
-        vmray_cluster_response = self._get_cluster_response()
-        if not self.max_worker_nodes:
-            vmray_cluster_spec = vmray_cluster_response.get("spec", {})
-            worker_node_config = vmray_cluster_spec.get("worker_node", {})
-            # If min_workers and max_workers are not provided then default to 0
-            self.min_worker_nodes = worker_node_config.get("min_workers", 0)
-            self.max_worker_nodes = worker_node_config.get(
-                "max_workers", self.min_worker_nodes
-            )
-            logger.info(
-                f"Min and max workers set to {self.min_worker_nodes}"
-                f"and {self.max_worker_nodes} respectively."
-            )
+        new_tags[TAG_RAY_NODE_NAME] = node_id
+        new_tags[TAG_RAY_NODE_KIND] = node_kind
+        new_tags[TAG_RAY_USER_NODE_TYPE] = node_user_type
+        return new_tags
 
 

@@ -4,17 +4,19 @@ metadata:
   name: ray-cluster-test
   namespace: <SUPERVISOR_NAMESPACE>
 spec:
-  desired_workers: []
   api_server:
     ca_cert: ""
     location: <CPVM_IP>
+  common_node_config:
+    max_workers: 5
+    min_workers: 4
+    node_types: {}
+    storage_class: vsan-default-storage-policy
+    vm_image: vmi-831f86d39cd80defd
+    vm_password_salt_hash: $6$test1234$9/BUZHNkvq.c1miDDMG5cHLmM4V7gbYdGuF0//3gSIh//DOyi7ypPCs6EAA9b8/tidHottL6UG0tG/RqTgAAi/
+    vm_user: ray-vm
   head_node:
     setup_commands: []
     port: 6245
-    node_config_name: ray-nodeconfig-1
-  image: project-taiga-docker-local.artifactory.eng.vmware.com/development/ray:milestone_1
-  worker_node:
-    max_workers: 3
-    min_workers: 1
-    node_config_name: ray-nodeconfig-1
-    idle_timeout_minutes: 5
+    vm_class: best-effort-xlarge
+  ray_docker_image: project-taiga-docker-local.artifactory.eng.vmware.com/development/ray:milestone_1
