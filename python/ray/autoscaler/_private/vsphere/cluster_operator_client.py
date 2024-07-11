@@ -389,7 +389,6 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             ray_cluster_config["spec"]["head_node"] = {}
             ray_cluster_config["spec"]["head_node"]["head_setup_commands"] = self.head_setup_commands
             ray_cluster_config["spec"]["head_node"]["port"] = 6379 # using default GCS port for now.
-            ray_cluster_config["spec"]["head_node"]["vm_class"] = self.available_node_types[DEFAULT_HEAD_NODE_TYPE]["node_config"]["vm_class"]
 
             # Set common node config & available node types.
             ray_cluster_config["spec"]["common_node_config"] = {}
@@ -397,7 +396,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             ray_cluster_config["spec"]["common_node_config"]["storage_class"] = self.supervisor_cluster_config.get("storage_policy")
             ray_cluster_config["spec"]["common_node_config"]["max_workers"] = self.max_worker_nodes
             ray_cluster_config["spec"]["common_node_config"]["min_workers"] = self.min_worker_nodes
-            ray_cluster_config["spec"]["common_node_config"]["available_node_types"] = self.available_node_types
+            ray_cluster_config["spec"]["common_node_config"]["available_node_types"] = self._convert_node_type_from_bootstrap_to_cr(self.available_node_types)
 
             # Node auth configuration
             # TODO: How do we pass ssh private key ? should it be a field only used by
@@ -407,6 +406,17 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
 
         logger.info(f"Creating VmRayCluster \n{ray_cluster_config}")
         self.k8s_api_client.customObjectApi.create_namespaced_custom_object(VMRAY_GROUP, VMRAY_CRD_VER, self.namespace, VMRAYCLUSTER_PLURAL, ray_cluster_config)
+    
+    def _convert_node_type_from_bootstrap_to_cr(self, bs_node_types):
+        cr_node_types = {}
+        for label, node_type in bs_node_types.items():
+            cr_node_types[label] = {
+                "vm_class": node_type["node_config"]["vm_class"],
+                "min_workers": node_type["min_workers"],
+                "max_workers": node_type["max_workers"],
+                "resources": node_type["resources"],
+            }
+        return cr_node_types
     
     def _set_tags(self, node_id, node_kind, node_user_type, node_status, tags):
         new_tags = tags.copy()
