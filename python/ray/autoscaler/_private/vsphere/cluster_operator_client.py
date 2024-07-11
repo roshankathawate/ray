@@ -81,8 +81,8 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         self.cluster_name = cluster_name
         self.vmraycluster_nounce = None
         self.supervisor_cluster_config = provider_config["vsphere_config"]
-        self.max_worker_nodes = provider_config["max_workers"]
-        self.min_worker_nodes = provider_config["min_workers"]
+        self.max_worker_nodes = provider_config.get("max_workers", 0)
+        self.min_worker_nodes = provider_config.get("min_workers", 0)
         self.head_setup_commands = provider_config["head_setup_commands"]
         self.available_node_types = provider_config["available_node_types"]
 
