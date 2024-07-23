@@ -77,18 +77,18 @@ class KubernetesHttpApiClient(object):
         self.customObjectApi = client.CustomObjectsApi(self.client)
 
 class ClusterOperatorClient(KubernetesHttpApiClient):
-    def __init__(self, cluster_name: str, provider_config: Dict[str, Any]):
+    def __init__(self, cluster_name: str, cluster_config: Dict[str, Any]):
         self.cluster_name = cluster_name
         self.vmraycluster_nounce = None
-        self.supervisor_cluster_config = provider_config["vsphere_config"]
-        self.max_worker_nodes = provider_config["max_workers"]
-        self.min_worker_nodes = provider_config["min_workers"]
-        self.head_setup_commands = provider_config["head_setup_commands"]
-        self.available_node_types = provider_config["available_node_types"]
+        self.supervisor_cluster_config = cluster_config["provider"]["vsphere_config"]
+        self.max_worker_nodes = cluster_config["max_workers"]
+        # self.min_worker_nodes = cluster_config["min_workers"]
+        self.head_setup_commands = cluster_config["head_setup_commands"]
+        self.available_node_types = cluster_config["available_node_types"]
 
         # docker configurations.
-        self.provider_auth = provider_config["auth"]
-        self.docker = provider_config["docker"]
+        self.provider_auth = cluster_config["auth"]
+        self.docker = cluster_config["docker"]
 
         self.namespace = self.supervisor_cluster_config["namespace"]
         self.k8s_api_client = KubernetesHttpApiClient(
@@ -264,12 +264,14 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                     # Append new VM names with existing one
                     if desired_workers:
                         new_desired_workers.update(desired_workers)
+                        
                     new_desired_workers.update(new_vm_names)
                     if len(new_desired_workers) > self.max_worker_nodes:
                         logger.warning(
                             "Autoscaler attempted to create more than max_workers VMs."
                         )
                         return created_nodes_dict
+
                     payload = {
                         "spec": {
                             "autoscaler_desired_workers": new_desired_workers
@@ -389,21 +391,33 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             ray_cluster_config["spec"]["head_node"] = {}
             ray_cluster_config["spec"]["head_node"]["head_setup_commands"] = self.head_setup_commands
             ray_cluster_config["spec"]["head_node"]["port"] = 6379 # using default GCS port for now.
-            ray_cluster_config["spec"]["head_node"]["vm_class"] = self.available_node_types[DEFAULT_HEAD_NODE_TYPE]["node_config"]["vm_class"]
+            ray_cluster_config["spec"]["head_node"]["vm_class"] = "best-effort-xlarge"#self.available_node_types[DEFAULT_HEAD_NODE_TYPE]["node_config"]["vm_class"]
 
             # Set common node config & available node types.
             ray_cluster_config["spec"]["common_node_config"] = {}
-            ray_cluster_config["spec"]["common_node_config"]["vm_image"] = self.supervisor_cluster_config.get("vm_image")
-            ray_cluster_config["spec"]["common_node_config"]["storage_class"] = self.supervisor_cluster_config.get("storage_policy")
+            ray_cluster_config["spec"]["common_node_config"]["vm_image"] = "vmi-ecb9a1d9b5aafcea7"#self.supervisor_cluster_config.get("vm_image")
+            ray_cluster_config["spec"]["common_node_config"]["storage_class"] = "wcpe2e-nfs-profile"#self.supervisor_cluster_config.get("storage_policy")
+            # TODO: Here min workers not required. Remove it from CRD.
             ray_cluster_config["spec"]["common_node_config"]["max_workers"] = self.max_worker_nodes
-            ray_cluster_config["spec"]["common_node_config"]["min_workers"] = self.min_worker_nodes
-            ray_cluster_config["spec"]["common_node_config"]["available_node_types"] = self.available_node_types
+            ray_cluster_config["spec"]["common_node_config"]["min_workers"] = 2 #self.min_worker_nodes
+            available_node_types = {}
+            for node_type, config in self.available_node_types.items():
+                available_node_types[node_type] = {}
+                available_node_types[node_type]["vm_class"] = config["node_config"].get("vm_class", None)
+                available_node_types[node_type]["resources"] = config.get("resources", {})
+                if not "head" in node_type:
+                    available_node_types[node_type]["min_workers"] = config.get("min_workers", 1)
+                    available_node_types[node_type]["max_workers"] = config.get("max_workers", 1)
+                
+
+
+            ray_cluster_config["spec"]["common_node_config"]["available_node_types"] = available_node_types
 
             # Node auth configuration
             # TODO: How do we pass ssh private key ? should it be a field only used by
             # autoscaler if so find a better way to pass rather than bootstrap json.
             ray_cluster_config["spec"]["common_node_config"]["vm_user"] = self.provider_auth["ssh_user"]
-            ray_cluster_config["spec"]["common_node_config"]["vm_password_salt_hash"] = self.provider_auth["ssh_password_hash"]
+            ray_cluster_config["spec"]["common_node_config"]["vm_password_salt_hash"] = "$6$test1234$9/BUZHNkvq.c1miDDMG5cHLmM4V7gbYdGuF0//3gSIh//DOyi7ypPCs6EAA9b8/tidHottL6UG0tG/RqTgAAi/"#self.provider_auth["ssh_password_hash"]
 
         logger.info(f"Creating VmRayCluster \n{ray_cluster_config}")
         self.k8s_api_client.customObjectApi.create_namespaced_custom_object(VMRAY_GROUP, VMRAY_CRD_VER, self.namespace, VMRAYCLUSTER_PLURAL, ray_cluster_config)
@@ -421,5 +435,4 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         new_tags[TAG_RAY_NODE_KIND] = node_kind
         new_tags[TAG_RAY_USER_NODE_TYPE] = node_user_type
         return new_tags
-
 

@@ -21,16 +21,19 @@ logger = logging.getLogger(__name__)
 
 class VmRayNodeProvider(NodeProvider):
     max_terminate_nodes = 1000
+    cluster_config = None
 
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.tag_cache = {}
         self.tag_cache_lock = threading.Lock()
-        self.client = ClusterOperatorClient(cluster_name, self.provider_config)
+        self.client = ClusterOperatorClient(cluster_name, VmRayNodeProvider.cluster_config)
 
     @staticmethod
     def bootstrap_config(cluster_config):
-        return cluster_config
+        config = bootstrap_vsphere(cluster_config)
+        VmRayNodeProvider.cluster_config = config
+        return config
 
     def non_terminated_nodes(self, tag_filters):
         nodes, tag_cache = self.client.list_vms(tag_filters)
