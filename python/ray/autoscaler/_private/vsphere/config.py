@@ -21,19 +21,24 @@ logger = logging.getLogger(__name__)
 
 
 def bootstrap_vsphere(config):
+
     # create a copy of the input config to modify
     config = copy.deepcopy(config)
 
     # add_credentials_into_provider_section(config)
     # Update library item configs
-    update_vsphere_configs(config)
+    # update_vsphere_configs(config)
+
+    # Log warnings if user included deprecated `head_node` or `worker_nodes`
+    # fields. Raise error if no `available_node_types`
+    # check_legacy_fields(config)
 
     # Log warnings if user included deprecated `head_node` or `worker_nodes`
     # fields. Raise error if no `available_node_types`
     check_legacy_fields(config)
 
-    # Disable NodeUpdater threads
-    config = disable_node_updater(config)
+    # Configure SSH access, using an existing key pair if possible.
+    config = configure_key_pair(config)
 
     global_event_system.execute_callback(
         CreateClusterEvent.ssh_keypair_downloaded,
