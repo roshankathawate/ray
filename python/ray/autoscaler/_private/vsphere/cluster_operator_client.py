@@ -73,18 +73,12 @@ class KubernetesHttpApiClient(object):
         self.customObjectApi = client.CustomObjectsApi(self.client)
 
 class ClusterOperatorClient(KubernetesHttpApiClient):
-    def __init__(self, cluster_name: str, cluster_config: Dict[str, Any]):
+    def __init__(self, cluster_name: str, provider_config: Dict[str, Any], cluster_config: Dict[str, Any]):
         self.cluster_name = cluster_name
         self.vmraycluster_nounce = None
-        self.supervisor_cluster_config = cluster_config["provider"]["vsphere_config"]
-        self.max_worker_nodes = cluster_config["max_workers"]
-        # self.min_worker_nodes = cluster_config["min_workers"]
-        self.head_setup_commands = cluster_config["head_setup_commands"]
-        self.available_node_types = cluster_config["available_node_types"]
+        self.max_worker_nodes = None
 
-        # docker configurations.
-        self.provider_auth = cluster_config["auth"]
-        self.docker = cluster_config["docker"]
+        self.supervisor_cluster_config = provider_config["vsphere_config"]
 
         self.namespace = self.supervisor_cluster_config["namespace"]
         self.k8s_api_client = KubernetesHttpApiClient(
@@ -92,6 +86,19 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             self.supervisor_cluster_config.get("api_server"),
         )
         self.lock = RLock()
+
+        # TODO: Fetching it for RAY CLI UP.
+        if cluster_config:
+            self.max_worker_nodes = cluster_config["max_workers"]
+            # self.min_worker_nodes = cluster_config["min_workers"]
+            self.head_setup_commands = cluster_config["head_setup_commands"]
+            self.available_node_types = cluster_config["available_node_types"]
+
+            # docker configurations.
+            self.provider_auth = cluster_config["auth"]
+            self.docker = cluster_config["docker"]
+        else:
+            self._set_min_max_worker_nodes()
 
     def list_vms(self, tag_filters: Dict[str, str]) -> Tuple[list, dict]:
         """Queries K8s for VMs in the RayCluster and filter them as per
@@ -118,7 +125,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 head_node_status = vmray_cluster_status.get("head_node_status", {})
                 # head node found
                 if head_node_status:
-                    node_id = f"{self.cluster_name}-h-" + "1" #TODO: Change this
+                    node_id = self._get_head_name()
                     nodes.append(node_id)
 
                     # Setting head node status
@@ -236,7 +243,6 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             if to_be_launched_node_count > 0:
                 new_desired_workers = {}
 
-                # First create VMNodeConfig CR if not created
                 new_vm_names = {}
                 for _ in range(to_be_launched_node_count):
                     name = self._create_node_name(tags[TAG_RAY_NODE_NAME])
@@ -304,7 +310,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         head_node_status = vmray_cluster_status.get("head_node_status", {})
         current_workers = vmray_cluster_status.get("current_workers", {})
         # head node is found
-        if head_node_status and node_id == self.cluster_name + "-h-1":
+        if head_node_status and node_id == self._get_head_name():
             return head_node_status
         # worker nodes found
         for worker in current_workers.keys():
@@ -372,6 +378,12 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             self.vmraycluster_nounce = random_str
             return f"{self.cluster_name}-h-" + self.vmraycluster_nounce
         return f"{self.cluster_name}-w-" + random_str
+    
+    def _get_head_name(self):
+        if not self.vmraycluster_nounce:
+            vmray_cluster_response = self._get_cluster_response()
+            self.vmraycluster_nounce = vmray_cluster_response["metadata"]["labels"]["vmray.kubernetes.io/head-nounce"]
+        return f"{self.cluster_name}-h-" + self.vmraycluster_nounce
 
     def _create_vmraycluster(self):
         ray_cluster_config = None
@@ -379,6 +391,9 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         with open(raycluster_config_path, "r") as file:
             ray_cluster_config = yaml.safe_load(file)
             ray_cluster_config["metadata"]["name"] = self.cluster_name
+            ray_cluster_config["metadata"]["labels"] = {
+                "vmray.kubernetes.io/head-nounce": self.vmraycluster_nounce,
+            }
             ray_cluster_config["metadata"]["namespace"] = self.namespace
             ray_cluster_config["spec"]["api_server"]["location"] = self.supervisor_cluster_config.get("api_server")
             ray_cluster_config["ray_docker_image"] = self.docker["image"]
@@ -430,4 +445,19 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         new_tags[TAG_RAY_NODE_KIND] = node_kind
         new_tags[TAG_RAY_USER_NODE_TYPE] = node_user_type
         return new_tags
+
+    def _set_min_max_worker_nodes(self):
+        vmray_cluster_response = self._get_cluster_response()
+        if not self.max_worker_nodes:
+            vmray_cluster_spec = vmray_cluster_response.get("spec", {})
+            common_node_config = vmray_cluster_spec.get("common_node_config", {})
+            # If min_workers and max_workers are not provided then default to 0
+            self.min_worker_nodes = common_node_config.get("min_workers", 0)
+            self.max_worker_nodes = common_node_config.get(
+                "max_workers", self.min_worker_nodes
+            )
+            logger.info(
+                f"Min and max workers set to {self.min_worker_nodes}"
+                f"and {self.max_worker_nodes} respectively."
+            )
 
