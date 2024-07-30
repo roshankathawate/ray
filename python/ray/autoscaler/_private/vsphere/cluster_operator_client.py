@@ -461,6 +461,17 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             }
         return cr_node_types
     
+    def _convert_node_type_from_bootstrap_to_cr(self, bs_node_types):
+        cr_node_types = {}
+        for label, node_type in bs_node_types.items():
+            cr_node_types[label] = {
+                "vm_class": node_type["node_config"]["vm_class"],
+                "min_workers": node_type["min_workers"],
+                "max_workers": node_type["max_workers"],
+                "resources": node_type["resources"],
+            }
+        return cr_node_types
+    
     def _set_tags(self, node_id, node_kind, node_user_type, node_status, tags):
         new_tags = tags.copy()
         if node_status == VMNodeStatus.RUNNING.value:
@@ -549,5 +560,3 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         # Create the secret in the specified namespace
         api_instance.create_namespaced_secret(namespace=namespace,body=secret)
         logger.info(f"Secret {secret_name} created in namespace {namespace}")
-        
-

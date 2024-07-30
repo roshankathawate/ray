@@ -101,7 +101,7 @@ class VmRayNodeProvider(NodeProvider):
                 self.tag_cache[node_id][TAG_RAY_NODE_STATUS] = STATUS_SETTING_UP
                 self.tag_cache[node_id][TAG_RAY_NODE_NAME] = node_id
                 self.tag_cache[node_id][TAG_RAY_CLUSTER_NAME] = self.cluster_name
-        logger.info(f"Node {node_id} created with tags: {self.tag_cache[node_id]}")
+                logger.info(f"Node {node_id} created with tags: {self.tag_cache[node_id]}")
         return created_nodes_dict
 
     def terminate_node(self, node_id):

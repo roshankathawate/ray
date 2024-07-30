@@ -83,7 +83,7 @@ def mock_cluster_operator():
         self.k8s_api_client = MagicMock()
 
     with patch.object(ClusterOperatorClient, "__init__", __init__):
-        operator = ClusterOperatorClient(_CLUSTER_NAME, _PROVIDER_CONFIG)
+        operator = ClusterOperatorClient(_CLUSTER_NAME, _PROVIDER_CONFIG, None)
     return copy.deepcopy(operator)
 
 
