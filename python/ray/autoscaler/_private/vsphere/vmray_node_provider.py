@@ -27,7 +27,7 @@ class VmRayNodeProvider(NodeProvider):
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.tag_cache = {}
         self.tag_cache_lock = threading.Lock()
-        self.client = ClusterOperatorClient(cluster_name, VmRayNodeProvider.cluster_config)
+        self.client = ClusterOperatorClient(cluster_name, provider_config, VmRayNodeProvider.cluster_config)
 
     @staticmethod
     def bootstrap_config(cluster_config):

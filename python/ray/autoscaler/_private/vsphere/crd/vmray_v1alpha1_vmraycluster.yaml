@@ -3,6 +3,7 @@ kind: VMRayCluster
 metadata:
   name: ray-cluster-test
   namespace: <SUPERVISOR_NAMESPACE>
+  labels: {}
 spec:
   api_server:
     ca_cert: ""
@@ -19,4 +20,4 @@ spec:
     setup_commands: []
     port: 6245
     vm_class: best-effort-xlarge
-  ray_docker_image: project-taiga-docker-local.artifactory.eng.vmware.com/development/ray:milestone_1
+  ray_docker_image: project-taiga-docker-local.artifactory.eng.vmware.com/development/ray:milestone_2

@@ -6,16 +6,16 @@ from ray.autoscaler._private.constants import DISABLE_NODE_UPDATERS_KEY
 from ray.autoscaler._private.event_system import CreateClusterEvent, global_event_system
 from ray.autoscaler._private.util import check_legacy_fields
 
-PRIVATE_KEY_NAME = "ray-bootstrap-key"
-PRIVATE_KEY_NAME_EXTN = "{}.pem".format(PRIVATE_KEY_NAME)
+from cryptography.hazmat.primitives import serialization as crypto_serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.backends import default_backend as crypto_default_backend
 
-PUBLIC_KEY_NAME = "ray_bootstrap_public_key"
-PUBLIC_KEY_NAME_EXTN = "{}.key".format(PUBLIC_KEY_NAME)
 
-PRIVATE_KEY_PATH = os.path.expanduser("~/{}.pem".format(PRIVATE_KEY_NAME))
-PUBLIC_KEY_PATH = os.path.expanduser("~/{}.key".format(PUBLIC_KEY_NAME))
+PRIVATE_KEY_NAME = "id_rsa_ray.pem"
+PUBLIC_KEY_NAME = "id_rsa_ray.pub"
 
-USER_DATA_FILE_PATH = os.path.join(os.path.dirname(__file__), "./data/userdata.yaml")
+PRIVATE_KEY_PATH = os.path.expanduser(f"~/{PRIVATE_KEY_NAME}")
+PUBLIC_KEY_PATH = os.path.expanduser(f"~/{PUBLIC_KEY_NAME}")
 
 logger = logging.getLogger(__name__)
 
@@ -231,23 +231,14 @@ def update_vsphere_configs(config):
 def configure_key_pair(config):
     logger.info("Configuring keys for Ray Cluster Launcher to ssh into the head node.")
 
-    assert os.path.exists(
-        PRIVATE_KEY_PATH
-    ), "Private key file at path {} was not found".format(PRIVATE_KEY_PATH)
-
-    assert os.path.exists(
-        PUBLIC_KEY_PATH
-    ), "Public key file at path {} was not found".format(PUBLIC_KEY_PATH)
+    if not os.path.exists(PRIVATE_KEY_PATH):
+        logger.warning("Private key file at path {} was not found".format(PRIVATE_KEY_PATH))
+        _create_ssh_keys()
+        logger.info(f"New SSH key pair {PRIVATE_KEY_PATH} and {PUBLIC_KEY_PATH} created.")
 
     # updater.py file uses the following config to ssh onto the head node
     # Also, copies the file onto the head node
     config["auth"]["ssh_private_key"] = PRIVATE_KEY_PATH
-
-    # # The path where the public key should be copied onto the remote host
-    public_key_remote_path = "~/{}".format(PUBLIC_KEY_NAME_EXTN)
-
-    # # Copy the public key to the remote host
-    config["file_mounts"][public_key_remote_path] = PUBLIC_KEY_PATH
 
     return config
 
@@ -267,3 +258,32 @@ def disable_node_updater(config):
     )
     config["provider"][DISABLE_NODE_UPDATERS_KEY] = True
     return config
+
+def _create_ssh_keys():
+    """Create SSH keys as specified"""
+    # Create a private key 
+    private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=4096
+    )
+    # Encode it in PEM format
+    unencrypted_private_key = private_key.private_bytes(
+        encoding=crypto_serialization.Encoding.PEM,
+        format=crypto_serialization.PrivateFormat.TraditionalOpenSSL,
+        encryption_algorithm=crypto_serialization.NoEncryption()
+    )
+    # Create a public key
+    public_key = private_key.public_key().public_bytes(
+        encoding=crypto_serialization.Encoding.PEM,
+        format=crypto_serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+    # Write keys
+    with open(PRIVATE_KEY_PATH, "wb") as pvt_key:
+        # manage access mode for the pvt key
+        os.chmod(PRIVATE_KEY_PATH, 0o600)
+        pvt_key.write(unencrypted_private_key)
+    
+    with open(PUBLIC_KEY_PATH, "wb") as pub_key:
+        # manage access mode for the pvt key
+        pub_key.write(public_key)
+    
