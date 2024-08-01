@@ -8,16 +8,13 @@ from ray.autoscaler._private.vsphere.cluster_operator_client import (
 from ray.autoscaler._private.vsphere.config import bootstrap_vsphere
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
-    STATUS_UP_TO_DATE,
     STATUS_SETTING_UP,
     TAG_RAY_CLUSTER_NAME,
     TAG_RAY_NODE_NAME,
     TAG_RAY_NODE_STATUS,
 )
 
-
 logger = logging.getLogger(__name__)
-
 
 class VmRayNodeProvider(NodeProvider):
     max_terminate_nodes = 1000

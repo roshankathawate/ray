@@ -25,12 +25,12 @@ import yaml
 
 # Design:
 
-# Each modification the autoscaler wants to make is posted to the API server desired
+# Each modification the autoscaler wants to make is posted to the API server's desired
 # state (e.g. if the autoscaler wants to scale up, it adds VM name to the desired
 # worker list it wants to scale, if it wants to scale down it removes the name from
 # the list).
 
-# VMRay CRD version
+# VMRay CRD 
 VMRAY_CRD_VER = os.getenv("VMRAY_CRD_VER", "v1alpha1")
 VMRAY_GROUP = "vmray.broadcom.com"
 VMRAYCLUSTER_PLURAL= "vmrayclusters"
@@ -83,16 +83,15 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         self.vmraycluster_nounce = None
         self.max_worker_nodes = None
 
-        self.supervisor_cluster_config = provider_config["vsphere_config"]
+        self.vsphere_config = provider_config["vsphere_config"]
 
-        self.namespace = self.supervisor_cluster_config["namespace"]
+        self.namespace = self.vsphere_config["namespace"]
         self.k8s_api_client = KubernetesHttpApiClient(
-            self.supervisor_cluster_config.get("ca_cert"),
-            self.supervisor_cluster_config.get("api_server"),
+            self.vsphere_config.get("ca_cert"),
+            self.vsphere_config.get("api_server"),
         )
         self.lock = RLock()
 
-        # TODO: Fetching it for RAY CLI UP.
         if cluster_config:
             self.max_worker_nodes = cluster_config["max_workers"]
             # self.min_worker_nodes = cluster_config["min_workers"]
@@ -111,57 +110,58 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         """
         logger.info(f"Getting nodes using tags \n{tag_filters}")
         tag_cache = {}
-        with self.lock:
-            filters = tag_filters.copy()
-            if TAG_RAY_CLUSTER_NAME not in tag_filters:
-                filters[TAG_RAY_CLUSTER_NAME] = self.cluster_name
+        
+        filters = tag_filters.copy()
+        # Use Ray cluster name to get resources
+        if TAG_RAY_CLUSTER_NAME not in tag_filters:
+            filters[TAG_RAY_CLUSTER_NAME] = self.cluster_name
 
-            nodes = []  
-            vmray_cluster_response = self._get_cluster_response()
-            if not vmray_cluster_response:
-                return nodes, tag_cache
-                
-            vmray_cluster_status = vmray_cluster_response.get("status", {})
-            if not vmray_cluster_status:
-                return nodes, tag_cache
+        nodes = []  
+        vmray_cluster_response = self._get_cluster_response()
+        if not vmray_cluster_response:
+            return nodes, tag_cache
             
-            #Check for a head node
-            if NODE_KIND_HEAD in tag_filters.values() or not tag_filters:
-                head_node_status = vmray_cluster_status.get("head_node_status", {})
-                # head node found
-                if head_node_status:
-                    node_id = self._get_head_name()
-                    nodes.append(node_id)
+        vmray_cluster_status = vmray_cluster_response.get("status", {})
+        if not vmray_cluster_status:
+            return nodes, tag_cache
+        
+        # Check for a head node
+        if NODE_KIND_HEAD in tag_filters.values() or not tag_filters:
+            head_node_status = vmray_cluster_status.get("head_node_status", {})
+            # head node found
+            if head_node_status:
+                node_id = self._get_head_name()
+                nodes.append(node_id)
 
-                    # Setting head node status
-                    status = head_node_status.get("vm_status", None)
-                    tag_cache[node_id] = self._set_tags(node_id, NODE_KIND_HEAD, DEFAULT_HEAD_NODE_TYPE,
-                                                        status, filters)
+                # Setting head node status
+                status = head_node_status.get("vm_status", None)
+                tag_cache[node_id] = self._set_tags(node_id, NODE_KIND_HEAD, DEFAULT_HEAD_NODE_TYPE,
+                                                    status, filters)
 
-            # Check current worker nodes 
-            if NODE_KIND_WORKER in tag_filters.values() or not tag_filters:
-                current_workers = vmray_cluster_status.get("current_workers", {})
-                vmray_cluster_spec = vmray_cluster_response.get("spec", {})
-                desired_workers = vmray_cluster_spec.get("autoscaler_desired_workers", {})
+        # Check current worker nodes 
+        if NODE_KIND_WORKER in tag_filters.values() or not tag_filters:
+            current_workers = vmray_cluster_status.get("current_workers", {})
+            vmray_cluster_spec = vmray_cluster_response.get("spec", {})
+            desired_workers = vmray_cluster_spec.get("autoscaler_desired_workers", {})
 
-                # worker nodes found
-                for worker in current_workers.keys():
-                    nodes.append(worker)
-                    # setting worker node status
-                    status = current_workers[worker].get("vm_status", None)
-                    node_type = desired_workers.get(worker, DEFAULT_WORKER_NODE_TYPE)
+            # worker nodes found
+            for worker in current_workers.keys():
+                nodes.append(worker)
+                # setting worker node status
+                status = current_workers[worker].get("vm_status", None)
+                node_type = desired_workers.get(worker, DEFAULT_WORKER_NODE_TYPE)
 
-                    tag_cache[worker] = self._set_tags(worker, NODE_KIND_WORKER, node_type,
-                                                       status, filters)
+                tag_cache[worker] = self._set_tags(worker, NODE_KIND_WORKER, node_type,
+                                                    status, filters)
 
-                # List VMs from the desired workers' list
-                for worker in desired_workers.keys():
-                    if worker in current_workers.keys():
-                        continue
-                    nodes.append(worker)
-                    node_type = desired_workers.get(worker, DEFAULT_WORKER_NODE_TYPE)
-                    tag_cache[worker] = self._set_tags(worker, NODE_KIND_WORKER, node_type,
-                                                       STATUS_SETTING_UP, filters)
+            # List VMs from the desired workers' list
+            for worker in desired_workers.keys():
+                if worker in current_workers.keys():
+                    continue
+                nodes.append(worker)
+                node_type = desired_workers.get(worker, DEFAULT_WORKER_NODE_TYPE)
+                tag_cache[worker] = self._set_tags(worker, NODE_KIND_WORKER, node_type,
+                                                    STATUS_SETTING_UP, filters)
 
             logger.info(f"Non terminated nodes are {nodes}")
             logger.info(f"Tags for nodes are: {tag_cache}")
@@ -170,22 +170,20 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
     def is_vm_power_on(self, node_id: str) -> bool:
         """Check current vm list. If its state is Running then return
         true else false."""
-        with self.lock:
-            node = self._get_node(node_id)
-            if node:
-                return node.get("vm_status", None) == VMNodeStatus.RUNNING.value
-            logger.info(f"VM {node_id} not found")
-            return False
+        node = self._get_node(node_id)
+        if node:
+            return node.get("vm_status", None) == VMNodeStatus.RUNNING.value
+        logger.info(f"VM {node_id} not found")
+        return False
 
     def is_vm_creating(self, node_id: str) -> bool:
         """Check current vm list. If its state is INITIALIZED then return
         true else false."""
-        with self.lock:
-            node = self._get_node(node_id)
-            if node:
-                return node.get("vm_status", None) == VMNodeStatus.INITIALIZED.value
-            logger.info(f"VM {node_id} is not yet initialized")
-            return False
+        node = self._get_node(node_id)
+        if node:
+            return node.get("vm_status", None) == VMNodeStatus.INITIALIZED.value
+        logger.info(f"VM {node_id} is not yet initialized")
+        return False
 
     def set_node_tags(self, tags: Dict[str, str]) -> None:
         """
@@ -195,25 +193,25 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
 
     def get_vm_external_ip(self, node_id: str) -> Optional[str]:
         """Check current worker list and get the external ip."""
-        with self.lock:
-            node = {}
-            # If head node return external IP of the VMService
-            # Ray head node is not accessible directly.
-            if node_id == self._get_head_name():
-                ingress = self._get_vm_service_ingress()
-                for item in ingress:
-                    if "ip" in item.keys():
-                        node = item
-                        break
-            else:
-                worker_node = self._get_node(node_id)
-                if worker_node and worker_node.get("vm_status", None) == VMNodeStatus.RUNNING.value:
-                    node = worker_node
-            ip = node.get("ip", None)
-            if ip and is_ipv4(ip):
-                return ip
-            logger.info(f"External IPv4 address: {ip} of VM: {node_id} is either invalid or not available")
-            return None
+        node = {}
+        # For a Ray head node, return external IP of the VMService
+        # Ray head node is not accessible directly.
+        if node_id == self._get_head_name():
+            ingress = self._get_vm_service_ingress()
+            for item in ingress:
+                if "ip" in item.keys():
+                    node = item
+                    break
+        else:
+            worker_node = self._get_node(node_id)
+            if worker_node and worker_node.get("vm_status", None) == VMNodeStatus.RUNNING.value:
+                node = worker_node
+        ip = node.get("ip", None)
+        # Validate returened IP
+        if ip and is_ipv4(ip):
+            return ip
+        logger.info(f"External IPv4 address: {ip} of VM: {node_id} is either invalid or not available")
+        return None
 
     def delete_node(self, node_id: str) -> None:
         """Remove name of the vm from the desired worker list and patch
@@ -228,7 +226,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             new_desired_workers = current_desired_workers.copy()
 
             # remove the node from the desired workers list
-            new_desired_workers.pop(node_id)
+            del new_desired_workers[node_id]
             logger.info(f"New desired VMs {new_desired_workers}")
 
             # Make sure node was present and deleted from the desired workers list
@@ -265,6 +263,9 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                     new_vm_names[name] = tags[TAG_RAY_USER_NODE_TYPE]
 
                 # Create a head node
+                # Autoscaler sends a tag
+                # head_node_tags[TAG_RAY_NODE_NAME] = "ray-{}-head".format(
+                # config["cluster_name"])
                 if "head" in tags[TAG_RAY_NODE_NAME]:
                      # head node will be created as a part of VMRayCluster CR
                     self._create_secret()
@@ -285,6 +286,8 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                         new_desired_workers.update(desired_workers)
                         
                     new_desired_workers.update(new_vm_names)
+                    logger.info(f"Adding VMs to desired VMs list: {new_vm_names}")
+                    logger.info(f"New desired state will be {new_desired_workers}")
                     if len(new_desired_workers) > self.max_worker_nodes:
                         logger.warning(
                             "Autoscaler attempted to create more than max_workers VMs."
@@ -296,7 +299,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                             "autoscaler_desired_workers": new_desired_workers
                         }
                     }
-                    logger.info(f"Adding VMs to desired VMs list: {new_vm_names}")
+                    
                     self.k8s_api_client.custom_object_api.patch_namespaced_custom_object(VMRAY_GROUP,VMRAY_CRD_VER, 
                                                                                        self.namespace,VMRAYCLUSTER_PLURAL,
                                                                                        self.cluster_name, payload,
@@ -306,18 +309,17 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             return created_nodes_dict
     
     def _get_cluster_response(self):
-        with self.lock:
-            response = None
-            try:
-                response = self.k8s_api_client.custom_object_api.\
-                get_namespaced_custom_object(VMRAY_GROUP,VMRAY_CRD_VER, self.namespace,VMRAYCLUSTER_PLURAL, self.cluster_name)
+        response = None
+        try:
+            response = self.k8s_api_client.custom_object_api.\
+            get_namespaced_custom_object(VMRAY_GROUP,VMRAY_CRD_VER, self.namespace,VMRAYCLUSTER_PLURAL, self.cluster_name)
+            return response
+        except client.exceptions.ApiException as e:
+            # If HTTP 404 received means the cluster is not yet created.
+            if e.status == 404:
+                logger.warning(f"{self.cluster_name} not available. Creating new one.")
                 return response
-            except client.exceptions.ApiException as e:
-                # If HTTP 404 received means the cluster is not yet created.
-                if e.status == 404:
-                    logger.warning(f"{self.cluster_name} not available. Creating new one.")
-                    return response
-                raise e
+            raise e
 
     def _get_node(self, node_id: str) -> Any:
         vmray_cluster_response = self._get_cluster_response()
@@ -413,7 +415,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 "vmray.io/created-by": "ray-cli",
             }
             ray_cluster_config["metadata"]["namespace"] = self.namespace
-            ray_cluster_config["spec"]["api_server"]["location"] = self.supervisor_cluster_config.get("api_server")
+            ray_cluster_config["spec"]["api_server"]["location"] = self.vsphere_config.get("api_server")
             ray_cluster_config["spec"]["ray_docker_image"] = self.docker["image"]
 
             # Set head node specific config.
@@ -423,8 +425,8 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
 
             # Set common node config & available node types.
             ray_cluster_config["spec"]["common_node_config"] = {}
-            ray_cluster_config["spec"]["common_node_config"]["vm_image"] = self.supervisor_cluster_config.get("vm_image")
-            ray_cluster_config["spec"]["common_node_config"]["storage_class"] = self.supervisor_cluster_config.get("storage_class")
+            ray_cluster_config["spec"]["common_node_config"]["vm_image"] = self.vsphere_config.get("vm_image")
+            ray_cluster_config["spec"]["common_node_config"]["storage_class"] = self.vsphere_config.get("storage_class")
             # TODO: Here min workers not required. Remove it from CRD.
             ray_cluster_config["spec"]["common_node_config"]["max_workers"] = self.max_worker_nodes
             ray_cluster_config["spec"]["common_node_config"]["min_workers"] = 2
@@ -513,12 +515,11 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         return ingress
             
     def _get_vm_service(self):
-        with self.lock:
-            try:
-                return self.k8s_api_client.custom_object_api.\
-                get_namespaced_custom_object(VMSERVICE_GROUP,VMSERVICE_CRD_VER, self.namespace,VMSERVICE_PLURAL, self._get_head_name())
-            except client.exceptions.ApiException as e:
-                raise e
+        try:
+            return self.k8s_api_client.custom_object_api.\
+            get_namespaced_custom_object(VMSERVICE_GROUP,VMSERVICE_CRD_VER, self.namespace,VMSERVICE_PLURAL, self._get_head_name())
+        except client.exceptions.ApiException as e:
+            raise e
     
     def _create_secret(self):
         """Create a K8s SSH secret using a local private SSH key
