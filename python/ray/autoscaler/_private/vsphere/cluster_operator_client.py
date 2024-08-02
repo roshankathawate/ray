@@ -115,16 +115,13 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         # Use Ray cluster name to get resources
         if TAG_RAY_CLUSTER_NAME not in tag_filters:
             filters[TAG_RAY_CLUSTER_NAME] = self.cluster_name
-
         nodes = []  
         vmray_cluster_response = self._get_cluster_response()
         if not vmray_cluster_response:
             return nodes, tag_cache
-            
         vmray_cluster_status = vmray_cluster_response.get("status", {})
         if not vmray_cluster_status:
             return nodes, tag_cache
-        
         # Check for a head node
         if NODE_KIND_HEAD in tag_filters.values() or not tag_filters:
             head_node_status = vmray_cluster_status.get("head_node_status", {})
@@ -137,7 +134,6 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 status = head_node_status.get("vm_status", None)
                 tag_cache[node_id] = self._set_tags(node_id, NODE_KIND_HEAD, DEFAULT_HEAD_NODE_TYPE,
                                                     status, filters)
-
         # Check current worker nodes 
         if NODE_KIND_WORKER in tag_filters.values() or not tag_filters:
             current_workers = vmray_cluster_status.get("current_workers", {})
@@ -165,7 +161,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
 
             logger.info(f"Non terminated nodes are {nodes}")
             logger.info(f"Tags for nodes are: {tag_cache}")
-            return nodes, tag_cache
+        return nodes, tag_cache
 
     def is_vm_power_on(self, node_id: str) -> bool:
         """Check current vm list. If its state is Running then return
