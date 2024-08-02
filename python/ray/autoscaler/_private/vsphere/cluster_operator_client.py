@@ -442,37 +442,10 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
 
 
             ray_cluster_config["spec"]["common_node_config"]["available_node_types"] = available_node_types
-
-
-            # Node auth configuration
-            # TODO: How do we pass ssh private key ? should it be a field only used by
-            # autoscaler if so find a better way to pass rather than bootstrap json.
             ray_cluster_config["spec"]["common_node_config"]["vm_user"] = self.provider_auth["ssh_user"]
 
         logger.info(f"Creating VmRayCluster \n{ray_cluster_config}")
         self.k8s_api_client.custom_object_api.create_namespaced_custom_object(VMRAY_GROUP, VMRAY_CRD_VER, self.namespace, VMRAYCLUSTER_PLURAL, ray_cluster_config)
-    
-    def _convert_node_type_from_bootstrap_to_cr(self, bs_node_types):
-        cr_node_types = {}
-        for label, node_type in bs_node_types.items():
-            cr_node_types[label] = {
-                "vm_class": node_type["node_config"]["vm_class"],
-                "min_workers": node_type["min_workers"],
-                "max_workers": node_type["max_workers"],
-                "resources": node_type["resources"],
-            }
-        return cr_node_types
-    
-    def _convert_node_type_from_bootstrap_to_cr(self, bs_node_types):
-        cr_node_types = {}
-        for label, node_type in bs_node_types.items():
-            cr_node_types[label] = {
-                "vm_class": node_type["node_config"]["vm_class"],
-                "min_workers": node_type["min_workers"],
-                "max_workers": node_type["max_workers"],
-                "resources": node_type["resources"],
-            }
-        return cr_node_types
     
     def _set_tags(self, node_id, node_kind, node_user_type, node_status, tags):
         new_tags = tags.copy()

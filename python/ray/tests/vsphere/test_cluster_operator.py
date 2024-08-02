@@ -85,64 +85,76 @@ _CLUSTER_CONFIG = {
 
 
 _CLUSTER_RESPONSE = {
-    "spec": {
-          "api_server": {
-            "location": "10.185.109.130"
-          },
-          "autoscaler_desired_workers": {
-            "ray-cluster-w-8bx6j4n1": "ray.worker.default",
-            "ray-cluster-w-nb9u9xf3": "ray.worker.default"
-          },
-          "common_node_config": {
-            "available_node_types": {
-              "ray.head.default": {
-                "max_workers": 0,
-                "min_workers": 0,
-                "resources": {},
-                "vm_class": "best-effort-xlarge"
-              },
-              "ray.worker.default": {
-                "max_workers": 5,
-                "min_workers": 2,
-                "resources": {
-                  "cpu": 4,
-                  "memory": 4294967296
-                },
-                "vm_class": "best-effort-xlarge"
-              }
-            },
-            "max_workers": 5,
-            "min_workers": 3,
-            "storage_class": "vsan-default-storage-policy",
-            "vm_image": "vmi-76e37912125b9ad17",
-            "vm_password_salt_hash": "$6$test1234$9/BUZHNkvq.c1miDDMG5cHLmM4V7gbYdGuF0//3gSIh//DOyi7ypPCs6EAA9b8/tidHottL6UG0tG/RqTgAAi/",
-            "vm_user": "ray-vm"
-          },
-          "enable_tls": True,
-          "head_node": {
-            "port": 6254
-          },
-          "ray_docker_image": "project-taiga-docker-local.artifactory.eng.vmware.com/development/ray:milestone_2.0"
+    "metadata": {
+        "creationTimestamp": "2024-08-01T07:20:42Z",
+        "deletionGracePeriodSeconds": 0,
+        "deletionTimestamp": "2024-08-01T07:30:14Z",
+        "finalizers": [
+        "vmraycluster.vmray.broadcom.com"
+        ],
+        "generation": 3,
+        "labels": {
+        "vmray.kubernetes.io/head-nounce": "ly2uv"
         },
-        "status": {
-          "cluster_state": "healthy",
-          "current_workers": {
-            "ray-cluster-w-8bx6j4n1": {
-              "ip": "10.244.1.131",
-              "vm_status": "setting-up"
+    },
+    "spec": {
+        "api_server": {
+        "location": "10.185.109.130"
+        },
+        "autoscaler_desired_workers": {
+        "ray-cluster-w-8bx6j4n1": "ray.worker.default",
+        "ray-cluster-w-nb9u9xf3": "ray.worker.default"
+        },
+        "common_node_config": {
+        "available_node_types": {
+            "ray.head.default": {
+            "max_workers": 0,
+            "min_workers": 0,
+            "resources": {},
+            "vm_class": "best-effort-xlarge"
             },
-            "ray-cluster-w-nb9u9xf3": {
-              "ip": "10.244.1.132",
-              "vm_status": "setting-up"
+            "ray.worker.default": {
+            "max_workers": 5,
+            "min_workers": 2,
+            "resources": {
+                "cpu": 4,
+                "memory": 4294967296
+            },
+            "vm_class": "best-effort-xlarge"
             }
-          },
-          "head_node_status": {
-            "ip": "10.244.1.130",
-            "ray_status": "running",
-            "vm_status": "running"
-          }
+        },
+        "max_workers": 5,
+        "min_workers": 3,
+        "storage_class": "vsan-default-storage-policy",
+        "vm_image": "vmi-76e37912125b9ad17",
+        "vm_password_salt_hash": "$6$test1234$9/BUZHNkvq.c1miDDMG5cHLmM4V7gbYdGuF0//3gSIh//DOyi7ypPCs6EAA9b8/tidHottL6UG0tG/RqTgAAi/",
+        "vm_user": "ray-vm"
+        },
+        "enable_tls": True,
+        "head_node": {
+        "port": 6254
+        },
+        "ray_docker_image": "project-taiga-docker-local.artifactory.eng.vmware.com/development/ray:milestone_2.0"
+        },
+    "status": {
+        "cluster_state": "healthy",
+        "current_workers": {
+        "ray-cluster-w-8bx6j4n1": {
+            "ip": "10.244.1.131",
+            "vm_status": "setting-up"
+        },
+        "ray-cluster-w-nb9u9xf3": {
+            "ip": "10.244.1.132",
+            "vm_status": "setting-up"
+        }
+        },
+        "head_node_status": {
+        "ip": "10.244.1.130",
+        "ray_status": "running",
+        "vm_status": "running"
         }
     }
+}
 
 
 def mock_cluster_operator():
@@ -459,47 +471,134 @@ def test__get_node():
     assert operator._get_node(worker_node) == {}
 
 
-# def test_safe_to_scale():
-#     """Should not scale until current state matches desired state"""
-#     operator = mock_cluster_operator()
-#     operator.lock = RLock()
-#     operator.max_worker_nodes = 5
-#     cluster_response = _CLUSTER_RESPONSE.copy()
-#     # Case where not all workers are up and running
-#     cluster_response["status"]["current_workers"] = {
-#         "test-vm1": {"vm_status": "running"}
-#     }
-#     cluster_response["spec"]["desired_workers"] = ["test-vm1", "test-vm2"]
-#     operator._get_cluster_response = MagicMock(return_value=cluster_response)
-#     assert operator.safe_to_scale() is False
-#     # Case where workers are waiting to be deleted
-#     cluster_response["status"]["current_workers"] = {
-#         "test-vm1": {"vm_status": "running"},
-#         "test-vm2": {"vm_status": "running"},
-#     }
-#     cluster_response["spec"]["desired_workers"] = ["test-vm1"]
-#     operator._get_cluster_response = MagicMock(return_value=cluster_response)
-#     assert operator.safe_to_scale() is False
-#     # Case where current state is a desired state
-#     operator._patch = MagicMock()
-#     cluster_response["spec"]["desired_workers"] = ["test-vm1", "test-vm2"]
-#     operator._get_cluster_response = MagicMock(return_value=cluster_response)
-#     assert operator.safe_to_scale() is True
+def test_safe_to_scale():
+    """Should not scale until current state matches desired state"""
+    operator = mock_cluster_operator()
+    operator.lock = RLock()
+    operator.max_worker_nodes = 5
+    cluster_response = _CLUSTER_RESPONSE.copy()
+    # Case where not all workers are up and running
+    cluster_response["status"]["current_workers"] = {
+        "test-vm1": {"vm_status": "running"}
+    }
+    cluster_response["spec"]["autoscaler_desired_workers"] = {"test-vm1": "ray.default.worker",
+                                                              "test-vm2": "ray.default.worker"}
+    operator._get_cluster_response = MagicMock(return_value=cluster_response)
+    assert operator.safe_to_scale() is False
+    # Case where workers are waiting to be deleted
+    cluster_response["status"]["current_workers"] = {
+        "test-vm1": {"vm_status": "running"},
+        "test-vm2": {"vm_status": "running"},
+    }
+    cluster_response["spec"]["autoscaler_desired_workers"] = {"test-vm1": "ray.default.worker"}
+    operator._get_cluster_response = MagicMock(return_value=cluster_response)
+    assert operator.safe_to_scale() is False
+    # Case where current state is a desired state
+    operator._patch = MagicMock()
+    cluster_response["spec"]["autoscaler_desired_workers"] = {"test-vm1": "ray.default.worker",
+                                                              "test-vm2": "ray.default.worker"}
+    operator._get_cluster_response = MagicMock(return_value=cluster_response)
+    assert operator.safe_to_scale() is True
 
 
-# def test__create_node_name():
-#     """Should create node name for head and worker nodes"""
-#     operator = mock_cluster_operator()
-#     # test for head node name
-#     pattern = re.compile("^(test-h-[a-z0-9]{5})$")
-#     node_name = operator._create_node_name("ray-head-node")
-#     assert pattern.match(node_name) is not None
-#     # test for worker node name
-#     pattern = re.compile("^(test-w-[a-z0-9]{5})$")
-#     node_name = operator._create_node_name("ray-worker-node")
-#     print(node_name)
-#     assert pattern.match(node_name) is not None
+def test__create_node_name():
+    """Should create node name for head and worker nodes"""
+    operator = mock_cluster_operator()
+    # test for head node name
+    pattern = re.compile("^(ray-cluster-h-[a-z0-9]{8})$")
+    node_name = operator._create_node_name("ray-head-node")
+    assert pattern.match(node_name) is not None
+    # test for worker node name
+    pattern = re.compile("^(ray-cluster-w-[a-z0-9]{8})$")
+    node_name = operator._create_node_name("ray-worker-node")
+    print(node_name)
+    assert pattern.match(node_name) is not None
 
+def test__get_head_name():
+    """Should return node name for a head node"""
+    operator = mock_cluster_operator()
+    operator.vmraycluster_nounce = None
+    # If nounce is not set read it from
+    # cluster response
+    cluster_response = _CLUSTER_RESPONSE.copy()
+    nounce = cluster_response["metadata"]["labels"]["vmray.kubernetes.io/head-nounce"]
+    # Mock cluster response
+    operator._get_cluster_response = MagicMock(return_value=cluster_response)
+    head_node_name = operator._get_head_name()
+    assert head_node_name == f"{operator.cluster_name}-h-{nounce}"
+
+def test__create_vmraycluster():
+    """Should create VMRayCluster CRD"""
+    operator = mock_cluster_operator()
+    operator.vmraycluster_nounce = "1234"
+    operator.k8s_api_client.custom_object_api.create_namespaced_custom_object = MagicMock()
+    operator._create_vmraycluster()
+    operator.k8s_api_client.custom_object_api.create_namespaced_custom_object.assert_called_once()
+
+def test_test__set_tags():
+    """Should set tags for a given node"""
+    operator = mock_cluster_operator()
+    node_id = "test-1"
+    node_kind = "head"
+    node_user_type = "ray.default.head"
+    node_status = "running"
+    new_tags = operator._set_tags(node_id, node_kind, node_user_type, node_status, {"ray-node-status": "",
+                                                                                    "ray-node-name":"",
+                                                                                    "ray-node-type":"",
+                                                                                    "ray-user-node-type":"",
+                                                                                    "test": "test"})
+    assert new_tags[TAG_RAY_NODE_STATUS] == STATUS_UP_TO_DATE
+    assert new_tags[TAG_RAY_NODE_NAME] == node_id
+    assert new_tags[TAG_RAY_NODE_KIND] == node_kind
+    assert new_tags[TAG_RAY_USER_NODE_TYPE] == node_user_type
+    assert new_tags["test"] == "test"
+    node_status = "initialized"
+    new_tags = operator._set_tags(node_id, node_kind, node_user_type, node_status, {"ray-node-status": "",
+                                                                                    "ray-node-name":"",
+                                                                                    "ray-node-type":"",
+                                                                                    "ray-user-node-type":"",
+                                                                                    "test": "test"})
+    assert new_tags[TAG_RAY_NODE_STATUS] == STATUS_SETTING_UP
+    node_status = "any_other_status"
+    new_tags = operator._set_tags(node_id, node_kind, node_user_type, node_status, {"ray-node-status": "",
+                                                                                    "ray-node-name":"",
+                                                                                    "ray-node-type":"",
+                                                                                    "ray-user-node-type":"",
+                                                                                    "test": "test"})
+    assert new_tags[TAG_RAY_NODE_STATUS] == STATUS_UNINITIALIZED
+
+def test__set_min_max_worker_nodes():
+    operator = mock_cluster_operator()
+    cluster_response = _CLUSTER_RESPONSE.copy()
+    operator._get_cluster_response = MagicMock(return_value=cluster_response)
+    operator.min_worker_nodes = None
+    operator.max_worker_nodes = None
+    operator._set_min_max_worker_nodes()
+    assert operator.min_worker_nodes == 3
+    assert operator.max_worker_nodes == 5
+
+def test_get_vm_service_ingress():
+    operator = mock_cluster_operator()
+    vm_service_response = {"status": {
+        "loadBalancer":{
+            "ingress":[{"ip": "10.10.10.10"}]
+        }
+    }}
+    operator._get_vm_service = MagicMock(return_value=vm_service_response)
+    ingress = operator._get_vm_service_ingress()
+    assert len(ingress) == 1
+    assert ingress[0]["ip"] == "10.10.10.10"
+    # Check if status is not available
+    vm_service_response = {}
+    operator._get_vm_service = MagicMock(return_value=vm_service_response)
+    assert operator._get_vm_service_ingress() == None
+    # Check if ingress in unavailable
+    vm_service_response = {"status": {
+        "loadBalancer":{
+        }
+    }}
+    operator._get_vm_service = MagicMock(return_value=vm_service_response)
+    assert operator._get_vm_service_ingress() == None
 
 if __name__ == "__main__":
     import sys
