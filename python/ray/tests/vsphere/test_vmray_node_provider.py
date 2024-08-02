@@ -11,6 +11,8 @@ from ray.autoscaler.tags import (
 )
 from ray.autoscaler._private.vsphere.vmray_node_provider import VmRayNodeProvider
 
+from python.ray.autoscaler.tags import STATUS_SETTING_UP
+
 _CLUSTER_NAME = "test"
 _PROVIDER_CONFIG = {
     "vsphere_config": {
@@ -136,11 +138,11 @@ def test_create_node():
     )
     assert len(created_nodes_dict) == 2
     assert len(vnp.tag_cache) == 2
-    assert vnp.tag_cache["vm-1"][TAG_RAY_NODE_STATUS] == STATUS_UP_TO_DATE
+    assert vnp.tag_cache["vm-1"][TAG_RAY_NODE_STATUS] == STATUS_SETTING_UP
     assert vnp.tag_cache["vm-1"][TAG_RAY_NODE_NAME] == "vm-1"
     assert vnp.tag_cache["vm-1"][TAG_RAY_CLUSTER_NAME] == vnp.cluster_name
 
-    assert vnp.tag_cache["vm-2"][TAG_RAY_NODE_STATUS] == STATUS_UP_TO_DATE
+    assert vnp.tag_cache["vm-2"][TAG_RAY_NODE_STATUS] == STATUS_SETTING_UP
     assert vnp.tag_cache["vm-2"][TAG_RAY_NODE_NAME] == "vm-2"
     assert vnp.tag_cache["vm-2"][TAG_RAY_CLUSTER_NAME] == vnp.cluster_name
 
