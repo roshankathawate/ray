@@ -37,6 +37,7 @@ def bootstrap_vsphere(config):
         {"ssh_key_path": config["auth"]["ssh_private_key"]},
     )
     logger.info(f"{config}")
+    exit()
     return config
 
 
@@ -71,32 +72,40 @@ def configure_run_options(config):
     tls_enable = (
         1 if config["provider"]["vsphere_config"].get("tls_enable", True) else 0
     )
-    # Configure head_run_options
-    if "head_run_options" not in config["docker"]:
-        config["docker"]["head_run_options"] = []
-    config["docker"]["head_run_options"].append(
-        f"--env-file /home/{ssh_user}/svc-account-token.env"
-    )
-
     # Configure common run options
     if "run_options" not in config["docker"]:
         config["docker"]["run_options"] = []
     config["docker"]["run_options"].append(f"--rm --name {container_name} -d")
-    config["docker"]["run_options"].append(
-        f"-v /home/{ssh_user}/ca.crt:/home/ray/ca.crt"
-    )
-    config["docker"]["run_options"].append(
-        f"-v /home/{ssh_user}/ca.key:/home/ray/ca.key"
-    )
-    config["docker"]["run_options"].append(
-        f"-v /home/{ssh_user}/gencert.sh:/home/ray/gencert.sh"
-    )
     config["docker"]["run_options"].append(f"--env RAY_USE_TLS={tls_enable}")
-    config["docker"]["run_options"].append("--env RAY_TLS_CA_CERT=/home/ray/ca.crt")
-    config["docker"]["run_options"].append("--env RAY_TLS_SERVER_KEY=/home/ray/tls.key")
-    config["docker"]["run_options"].append(
-        "--env RAY_TLS_SERVER_CERT=/home/ray/tls.crt"
-    )
+
+    if tls_enable == 1:
+        # Generate TLS cert and key for head and worker nodes.
+        # This needs to be done before ray start command
+        config["head_start_ray_commands"].insert(0,"sh /home/ray/gencert.sh")
+        config["worker_start_ray_commands"].insert(0,"sh /home/ray/gencert.sh")
+
+        # Configure head_run_options
+        if "head_run_options" not in config["docker"]:
+            config["docker"]["head_run_options"] = []
+        config["docker"]["head_run_options"].append(
+            f"--env-file /home/{ssh_user}/svc-account-token.env"
+        )
+
+        config["docker"]["run_options"].append(
+            f"-v /home/{ssh_user}/ca.crt:/home/ray/ca.crt"
+        )
+        config["docker"]["run_options"].append(
+            f"-v /home/{ssh_user}/ca.key:/home/ray/ca.key"
+        )
+        config["docker"]["run_options"].append(
+            f"-v /home/{ssh_user}/gencert.sh:/home/ray/gencert.sh"
+        )
+        
+        config["docker"]["run_options"].append("--env RAY_TLS_CA_CERT=/home/ray/ca.crt")
+        config["docker"]["run_options"].append("--env RAY_TLS_SERVER_KEY=/home/ray/tls.key")
+        config["docker"]["run_options"].append(
+            "--env RAY_TLS_SERVER_CERT=/home/ray/tls.crt"
+        )
 
     return config
 

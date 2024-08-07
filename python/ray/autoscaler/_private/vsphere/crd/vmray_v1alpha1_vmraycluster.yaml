@@ -15,7 +15,7 @@ spec:
     storage_class: vsan-default-storage-policy
     vm_image: vmi-831f86d39cd80defd
     vm_password_salt_hash: $6$test1234$9/BUZHNkvq.c1miDDMG5cHLmM4V7gbYdGuF0//3gSIh//DOyi7ypPCs6EAA9b8/tidHottL6UG0tG/RqTgAAi/
-    vm_user: ray-vm
+    vm_user: ray
   head_node:
     setup_commands: []
     port: 6245
