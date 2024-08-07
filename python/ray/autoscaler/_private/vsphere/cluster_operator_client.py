@@ -6,6 +6,8 @@ import string
 from enum import Enum
 from threading import RLock
 from typing import Any, Dict, Optional, Tuple
+
+import yaml
 from kubernetes import client, config
 
 from ray.autoscaler._private.vsphere.utils import is_ipv4
@@ -21,7 +23,6 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_STATUS,
     TAG_RAY_USER_NODE_TYPE,
 )
-import yaml
 
 # Design:
 
@@ -30,10 +31,10 @@ import yaml
 # worker list it wants to scale, if it wants to scale down it removes the name from
 # the list).
 
-# VMRay CRD 
+# VMRay CRD
 VMRAY_CRD_VER = os.getenv("VMRAY_CRD_VER", "v1alpha1")
 VMRAY_GROUP = "vmray.broadcom.com"
-VMRAYCLUSTER_PLURAL= "vmrayclusters"
+VMRAYCLUSTER_PLURAL = "vmrayclusters"
 VMNODE_CONFIG_PLURAL = "vmraynodeconfigs"
 
 # VirtualMachineService CRD
@@ -49,10 +50,12 @@ DEFAULT_WORKER_NODE_TYPE = "ray.worker.default"
 logger = logging.getLogger(__name__)
 cur_path = os.path.dirname(__file__)
 
+
 class VMNodeStatus(Enum):
     INITIALIZED = "initialized"
     RUNNING = "running"
     FAIL = "failure"
+
 
 class KubernetesHttpApiClient(object):
     def __init__(self, ca_cert: str, api_server: str):
@@ -67,8 +70,8 @@ class KubernetesHttpApiClient(object):
         else:
             configuration = client.Configuration()
             configuration.api_key["authorization"] = token
-            configuration.api_key_prefix['authorization'] = 'Bearer'
-            configuration.host = f'https://{api_server}'
+            configuration.api_key_prefix["authorization"] = "Bearer"
+            configuration.host = f"https://{api_server}"
             if ca_cert:
                 configuration.ssl_ca_cert = ca_cert
             else:
@@ -77,8 +80,14 @@ class KubernetesHttpApiClient(object):
         # Use customObjectsApi to access custom resources
         self.custom_object_api = client.CustomObjectsApi(self.client)
 
+
 class ClusterOperatorClient(KubernetesHttpApiClient):
-    def __init__(self, cluster_name: str, provider_config: Dict[str, Any], cluster_config: Dict[str, Any]):
+    def __init__(
+        self,
+        cluster_name: str,
+        provider_config: Dict[str, Any],
+        cluster_config: Dict[str, Any],
+    ):
         self.cluster_name = cluster_name
         self.vmraycluster_nounce = None
         self.max_worker_nodes = None
@@ -110,12 +119,12 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         """
         logger.info(f"Getting nodes using tags \n{tag_filters}")
         tag_cache = {}
-        
+
         filters = tag_filters.copy()
         # Use Ray cluster name to get resources
         if TAG_RAY_CLUSTER_NAME not in tag_filters:
             filters[TAG_RAY_CLUSTER_NAME] = self.cluster_name
-        nodes = []  
+        nodes = []
         vmray_cluster_response = self._get_cluster_response()
         if not vmray_cluster_response:
             return nodes, tag_cache
@@ -132,9 +141,10 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
 
                 # Setting head node status
                 status = head_node_status.get("vm_status", None)
-                tag_cache[node_id] = self._set_tags(node_id, NODE_KIND_HEAD, DEFAULT_HEAD_NODE_TYPE,
-                                                    status, filters)
-        # Check current worker nodes 
+                tag_cache[node_id] = self._set_tags(
+                    node_id, NODE_KIND_HEAD, DEFAULT_HEAD_NODE_TYPE, status, filters
+                )
+        # Check current worker nodes
         if NODE_KIND_WORKER in tag_filters.values() or not tag_filters:
             current_workers = vmray_cluster_status.get("current_workers", {})
             vmray_cluster_spec = vmray_cluster_response.get("spec", {})
@@ -147,8 +157,9 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 status = current_workers[worker].get("vm_status", None)
                 node_type = desired_workers.get(worker, DEFAULT_WORKER_NODE_TYPE)
 
-                tag_cache[worker] = self._set_tags(worker, NODE_KIND_WORKER, node_type,
-                                                    status, filters)
+                tag_cache[worker] = self._set_tags(
+                    worker, NODE_KIND_WORKER, node_type, status, filters
+                )
 
             # List VMs from the desired workers' list
             for worker in desired_workers.keys():
@@ -156,8 +167,9 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                     continue
                 nodes.append(worker)
                 node_type = desired_workers.get(worker, DEFAULT_WORKER_NODE_TYPE)
-                tag_cache[worker] = self._set_tags(worker, NODE_KIND_WORKER, node_type,
-                                                    STATUS_SETTING_UP, filters)
+                tag_cache[worker] = self._set_tags(
+                    worker, NODE_KIND_WORKER, node_type, STATUS_SETTING_UP, filters
+                )
 
             logger.info(f"Non terminated nodes are {nodes}")
             logger.info(f"Tags for nodes are: {tag_cache}")
@@ -200,13 +212,19 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                     break
         else:
             worker_node = self._get_node(node_id)
-            if worker_node and worker_node.get("vm_status", None) == VMNodeStatus.RUNNING.value:
+            if (
+                worker_node
+                and worker_node.get("vm_status", None) == VMNodeStatus.RUNNING.value
+            ):
                 node = worker_node
         ip = node.get("ip", None)
         # Validate returened IP
         if ip and is_ipv4(ip):
             return ip
-        logger.info(f"External IPv4 address: {ip} of VM: {node_id} is either invalid or not available")
+        logger.info(
+            f"External IPv4 address: {ip} of VM: {node_id} \
+            is either invalid or not available"
+        )
         return None
 
     def delete_node(self, node_id: str) -> None:
@@ -217,32 +235,46 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             vmray_cluster_spec = vmray_cluster_response.get("spec", {})
 
             # get desired workers
-            current_desired_workers = vmray_cluster_spec.get("autoscaler_desired_workers", {})
+            current_desired_workers = vmray_cluster_spec.get(
+                "autoscaler_desired_workers", {}
+            )
             logger.info(f"Current desired VMs {current_desired_workers}")
             new_desired_workers = current_desired_workers.copy()
 
             # remove the node from the desired workers list
-            del new_desired_workers[node_id]
+            if node_id in new_desired_workers:
+                del new_desired_workers[node_id]
+            elif node_id == self._get_head_name():
+                # Handle case to delete a head node
+                self.k8s_api_client.custom_object_api.delete_namespaced_custom_object(
+                    VMRAY_GROUP,
+                    VMRAY_CRD_VER,
+                    self.namespace,
+                    VMRAYCLUSTER_PLURAL,
+                    self.cluster_name,
+                )
+
             logger.info(f"New desired VMs {new_desired_workers}")
 
             # Make sure node was present and deleted from the desired workers list
             if len(new_desired_workers) < len(current_desired_workers):
-                payload = {
-                    "spec": {
-                        "autoscaler_desired_workers": new_desired_workers
-                    }
-                }
+                payload = {"spec": {"autoscaler_desired_workers": new_desired_workers}}
                 logger.info(f"Deleting VM {node_id} | payload: {new_desired_workers}")
-                self.k8s_api_client.custom_object_api.patch_namespaced_custom_object(VMRAY_GROUP,VMRAY_CRD_VER,
-                                                                                       self.namespace,VMRAYCLUSTER_PLURAL,
-                                                                                       self.cluster_name, payload,
-                                                                                       async_req=False)
+                self.k8s_api_client.custom_object_api.patch_namespaced_custom_object(
+                    VMRAY_GROUP,
+                    VMRAY_CRD_VER,
+                    self.namespace,
+                    VMRAYCLUSTER_PLURAL,
+                    self.cluster_name,
+                    payload,
+                    async_req=False,
+                )
 
     def create_nodes(
         self,
         tags: Dict[str, str],
         to_be_launched_node_count: int,
-        node_config: Dict[str, Any]
+        node_config: Dict[str, Any],
     ) -> Optional[Dict[str, Any]]:
         """Ask cluster operator to create worker VMs"""
         logger.info(f"Creating {to_be_launched_node_count} nodes.")
@@ -263,24 +295,26 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 # head_node_tags[TAG_RAY_NODE_NAME] = "ray-{}-head".format(
                 # config["cluster_name"])
                 if "head" in tags[TAG_RAY_NODE_NAME]:
-                     # head node will be created as a part of VMRayCluster CR
+                    # head node will be created as a part of VMRayCluster CR
                     self._create_secret()
                     self._create_vmraycluster()
                 else:
-                    # Once VMRayCluster CR is created, update it to create worker 
+                    # Once VMRayCluster CR is created, update it to create worker
                     # nodes.
                     vmray_cluster_response = self._get_cluster_response()
                     vmray_cluster_spec = vmray_cluster_response.get("spec", {})
 
                     # get desired workers
-                    desired_workers = vmray_cluster_spec.get("autoscaler_desired_workers", {})
+                    desired_workers = vmray_cluster_spec.get(
+                        "autoscaler_desired_workers", {}
+                    )
 
                     # If workers are present in both the list then it shows stable
                     # state for the cluster.
                     # Append new VM names with existing one
                     if desired_workers:
                         new_desired_workers.update(desired_workers)
-                        
+
                     new_desired_workers.update(new_vm_names)
                     logger.info(f"Adding VMs to desired VMs list: {new_vm_names}")
                     logger.info(f"New desired state will be {new_desired_workers}")
@@ -291,24 +325,35 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                         return created_nodes_dict
 
                     payload = {
-                        "spec": {
-                            "autoscaler_desired_workers": new_desired_workers
-                        }
+                        "spec": {"autoscaler_desired_workers": new_desired_workers}
                     }
-                    
-                    self.k8s_api_client.custom_object_api.patch_namespaced_custom_object(VMRAY_GROUP,VMRAY_CRD_VER, 
-                                                                                       self.namespace,VMRAYCLUSTER_PLURAL,
-                                                                                       self.cluster_name, payload,
-                                                                                       async_req=False)
+
+                    custom_api = self.k8s_api_client.custom_object_api
+                    custom_api.patch_namespaced_custom_object(
+                        VMRAY_GROUP,
+                        VMRAY_CRD_VER,
+                        self.namespace,
+                        VMRAYCLUSTER_PLURAL,
+                        self.cluster_name,
+                        payload,
+                        async_req=False,
+                    )
                 for vm in new_vm_names:
                     created_nodes_dict[vm] = vm
             return created_nodes_dict
-    
+
     def _get_cluster_response(self):
         response = None
         try:
-            response = self.k8s_api_client.custom_object_api.\
-            get_namespaced_custom_object(VMRAY_GROUP,VMRAY_CRD_VER, self.namespace,VMRAYCLUSTER_PLURAL, self.cluster_name)
+            response = (
+                self.k8s_api_client.custom_object_api.get_namespaced_custom_object(
+                    VMRAY_GROUP,
+                    VMRAY_CRD_VER,
+                    self.namespace,
+                    VMRAYCLUSTER_PLURAL,
+                    self.cluster_name,
+                )
+            )
             return response
         except client.exceptions.ApiException as e:
             # If HTTP 404 received means the cluster is not yet created.
@@ -393,16 +438,20 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             self.vmraycluster_nounce = random_str
             return f"{self.cluster_name}-h-" + self.vmraycluster_nounce
         return f"{self.cluster_name}-w-" + random_str
-    
+
     def _get_head_name(self):
         if not self.vmraycluster_nounce:
             vmray_cluster_response = self._get_cluster_response()
-            self.vmraycluster_nounce = vmray_cluster_response["metadata"]["labels"]["vmray.kubernetes.io/head-nounce"]
+            self.vmraycluster_nounce = vmray_cluster_response["metadata"]["labels"][
+                "vmray.kubernetes.io/head-nounce"
+            ]
         return f"{self.cluster_name}-h-" + self.vmraycluster_nounce
 
     def _create_vmraycluster(self):
         ray_cluster_config = None
-        raycluster_config_path = os.path.join(cur_path, "crd/vmray_v1alpha1_vmraycluster.yaml")
+        raycluster_config_path = os.path.join(
+            cur_path, "crd/vmray_v1alpha1_vmraycluster.yaml"
+        )
         with open(raycluster_config_path, "r") as file:
             ray_cluster_config = yaml.safe_load(file)
             ray_cluster_config["metadata"]["name"] = self.cluster_name
@@ -411,38 +460,66 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 "vmray.io/created-by": "ray-cli",
             }
             ray_cluster_config["metadata"]["namespace"] = self.namespace
-            ray_cluster_config["spec"]["api_server"]["location"] = self.vsphere_config.get("api_server")
+            ray_cluster_config["spec"]["api_server"][
+                "location"
+            ] = self.vsphere_config.get("api_server")
             ray_cluster_config["spec"]["ray_docker_image"] = self.docker["image"]
 
             # Set head node specific config.
             ray_cluster_config["spec"]["head_node"] = {}
-            ray_cluster_config["spec"]["head_node"]["head_setup_commands"] = self.head_setup_commands
-            ray_cluster_config["spec"]["head_node"]["port"] = 6379 # using default GCS port for now.
+            ray_cluster_config["spec"]["head_node"][
+                "head_setup_commands"
+            ] = self.head_setup_commands
+            ray_cluster_config["spec"]["head_node"][
+                "port"
+            ] = 6379  # using default GCS port for now.
 
             # Set common node config & available node types.
             ray_cluster_config["spec"]["common_node_config"] = {}
-            ray_cluster_config["spec"]["common_node_config"]["vm_image"] = self.vsphere_config.get("vm_image")
-            ray_cluster_config["spec"]["common_node_config"]["storage_class"] = self.vsphere_config.get("storage_class")
+            ray_cluster_config["spec"]["common_node_config"][
+                "vm_image"
+            ] = self.vsphere_config.get("vm_image")
+            ray_cluster_config["spec"]["common_node_config"][
+                "storage_class"
+            ] = self.vsphere_config.get("storage_class")
             # TODO: Here min workers not required. Remove it from CRD.
-            ray_cluster_config["spec"]["common_node_config"]["max_workers"] = self.max_worker_nodes
+            ray_cluster_config["spec"]["common_node_config"][
+                "max_workers"
+            ] = self.max_worker_nodes
             ray_cluster_config["spec"]["common_node_config"]["min_workers"] = 2
             available_node_types = {}
-            for node_type, config in self.available_node_types.items():
+            for node_type, node_config in self.available_node_types.items():
                 available_node_types[node_type] = {}
-                available_node_types[node_type]["vm_class"] = config["node_config"].get("vm_class", None)
-                available_node_types[node_type]["resources"] = config.get("resources", {})
+                available_node_types[node_type]["vm_class"] = node_config[
+                    "node_config"
+                ].get("vm_class", None)
+                available_node_types[node_type]["resources"] = node_config.get(
+                    "resources", {}
+                )
                 if DEFAULT_HEAD_NODE_TYPE == node_type:
-                    available_node_types[node_type]["min_workers"] = config.get("min_workers", 1)
-                    available_node_types[node_type]["max_workers"] = config.get("max_workers", 1)
-                
+                    available_node_types[node_type]["min_workers"] = node_config.get(
+                        "min_workers", 1
+                    )
+                    available_node_types[node_type]["max_workers"] = node_config.get(
+                        "max_workers", 1
+                    )
 
-
-            ray_cluster_config["spec"]["common_node_config"]["available_node_types"] = available_node_types
-            ray_cluster_config["spec"]["common_node_config"]["vm_user"] = self.provider_auth["ssh_user"]
+            ray_cluster_config["spec"]["common_node_config"][
+                "available_node_types"
+            ] = available_node_types
+            ray_cluster_config["spec"]["common_node_config"][
+                "vm_user"
+            ] = self.provider_auth["ssh_user"]
 
         logger.info(f"Creating VmRayCluster \n{ray_cluster_config}")
-        self.k8s_api_client.custom_object_api.create_namespaced_custom_object(VMRAY_GROUP, VMRAY_CRD_VER, self.namespace, VMRAYCLUSTER_PLURAL, ray_cluster_config)
-    
+        self.k8s_api_client.custom_object_api.create_namespaced_custom_object(
+            VMRAY_GROUP,
+            VMRAY_CRD_VER,
+            self.namespace,
+            VMRAYCLUSTER_PLURAL,
+            ray_cluster_config,
+        )
+
     def _set_tags(self, node_id, node_kind, node_user_type, node_status, tags):
         new_tags = tags.copy()
         if node_status == VMNodeStatus.RUNNING.value:
@@ -482,51 +559,50 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             return None
         logger.info(f"vm service ingress is {ingress}")
         return ingress
-            
+
     def _get_vm_service(self):
         try:
-            return self.k8s_api_client.custom_object_api.\
-            get_namespaced_custom_object(VMSERVICE_GROUP,VMSERVICE_CRD_VER, self.namespace,VMSERVICE_PLURAL, self._get_head_name())
+            return self.k8s_api_client.custom_object_api.get_namespaced_custom_object(
+                VMSERVICE_GROUP,
+                VMSERVICE_CRD_VER,
+                self.namespace,
+                VMSERVICE_PLURAL,
+                self._get_head_name(),
+            )
         except client.exceptions.ApiException as e:
             raise e
-    
+
     def _create_secret(self):
         """Create a K8s SSH secret using a local private SSH key
         specified in the config."""
-        
+
         # Define the namespace and secret name
         namespace = self.namespace
         secret_name = f"{self.cluster_name}-ssh-key"
 
         pvt_key = self.provider_auth.get("ssh_private_key")
         private_key_path = os.path.expanduser(pvt_key)
-        
+
         # Read the SSH private key
         with open(private_key_path, "rb") as ssh_key:
             ssh_key_data = ssh_key.read()
 
         # Base64 encode the SSH key
-        encoded_key = base64.b64encode(ssh_key_data).decode('utf-8')
+        encoded_key = base64.b64encode(ssh_key_data).decode("utf-8")
 
         # Create the data
-        data = {
-            "ssh-pvt-key": encoded_key
-        }
+        data = {"ssh-pvt-key": encoded_key}
 
         # Create metadata
         metadata = client.V1ObjectMeta(name=secret_name)
 
         # Secret object
         secret = client.V1Secret(
-            api_version="v1",
-            kind= "Secret",
-            metadata=metadata,
-            data=data,
-            type="Opaque"
-            )
-        
+            api_version="v1", kind="Secret", metadata=metadata, data=data, type="Opaque"
+        )
+
         api_instance = client.CoreV1Api(self.k8s_api_client.client)
 
         # Create the secret in the specified namespace
-        api_instance.create_namespaced_secret(namespace=namespace,body=secret)
+        api_instance.create_namespaced_secret(namespace=namespace, body=secret)
         logger.info(f"Secret {secret_name} created in namespace {namespace}")

@@ -7,7 +7,6 @@ from ray.autoscaler.tags import (
     TAG_RAY_CLUSTER_NAME,
     TAG_RAY_NODE_NAME,
     TAG_RAY_NODE_STATUS,
-    STATUS_UP_TO_DATE,
 )
 from ray.autoscaler._private.vsphere.vmray_node_provider import VmRayNodeProvider
 

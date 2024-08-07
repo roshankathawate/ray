@@ -16,6 +16,7 @@ from ray.autoscaler.tags import (
 
 logger = logging.getLogger(__name__)
 
+
 class VmRayNodeProvider(NodeProvider):
     max_terminate_nodes = 1000
     cluster_config = None
@@ -24,7 +25,9 @@ class VmRayNodeProvider(NodeProvider):
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.tag_cache = {}
         self.tag_cache_lock = threading.Lock()
-        self.client = ClusterOperatorClient(cluster_name, provider_config, VmRayNodeProvider.cluster_config)
+        self.client = ClusterOperatorClient(
+            cluster_name, provider_config, VmRayNodeProvider.cluster_config
+        )
 
     @staticmethod
     def bootstrap_config(cluster_config):
@@ -98,7 +101,9 @@ class VmRayNodeProvider(NodeProvider):
                 self.tag_cache[node_id][TAG_RAY_NODE_STATUS] = STATUS_SETTING_UP
                 self.tag_cache[node_id][TAG_RAY_NODE_NAME] = node_id
                 self.tag_cache[node_id][TAG_RAY_CLUSTER_NAME] = self.cluster_name
-                logger.info(f"Node {node_id} created with tags: {self.tag_cache[node_id]}")
+                logger.info(
+                    f"Node {node_id} created with tags: {self.tag_cache[node_id]}"
+                )
         return created_nodes_dict
 
     def terminate_node(self, node_id):
