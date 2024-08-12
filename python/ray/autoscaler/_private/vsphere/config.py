@@ -83,6 +83,13 @@ def configure_run_options(config):
     config["docker"]["head_run_options"].append(
         f"--env-file /home/{ssh_user}/svc-account-token.env"
     )
+
+    # Configure worker_run_options
+    if "worker_run_options" not in config["docker"]:
+        config["docker"]["worker_run_options"] = []
+    config["docker"]["worker_run_options"].append(
+        f"--env-file /home/{ssh_user}/ray-worker.env"
+    )
     
     if tls_enable == 1:
         # Generate TLS cert and key for head and worker nodes.
