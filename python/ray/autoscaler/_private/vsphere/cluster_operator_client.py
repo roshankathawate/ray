@@ -238,36 +238,37 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             current_desired_workers = vmray_cluster_spec.get(
                 "autoscaler_desired_workers", {}
             )
-            logger.info(f"Current desired VMs {current_desired_workers}")
+            logger.info(f"Current desired workers: {current_desired_workers}")
             new_desired_workers = current_desired_workers.copy()
 
             # remove the node from the desired workers list
             if node_id in new_desired_workers:
                 del new_desired_workers[node_id]
+                logger.info(f"New desired workers: {new_desired_workers}")
+
+                # Make sure node was present and deleted from the desired workers list
+                if len(new_desired_workers) < len(current_desired_workers):
+                    payload = {"spec": {"autoscaler_desired_workers": new_desired_workers}}
+                    logger.info(f"Deleting VM {node_id} | payload: {new_desired_workers}")
+                    self.k8s_api_client.custom_object_api.patch_namespaced_custom_object(
+                        VMRAY_GROUP,
+                        VMRAY_CRD_VER,
+                        self.namespace,
+                        VMRAYCLUSTER_PLURAL,
+                        self.cluster_name,
+                        payload,
+                        async_req=False,
+                    )
             elif node_id == self._get_head_name():
                 # Handle case to delete a head node
+                # Delete VMRayCluster which will delete head node
+                # as well as associated secrets and other resources.
                 self.k8s_api_client.custom_object_api.delete_namespaced_custom_object(
                     VMRAY_GROUP,
                     VMRAY_CRD_VER,
                     self.namespace,
                     VMRAYCLUSTER_PLURAL,
                     self.cluster_name,
-                )
-
-            logger.info(f"New desired VMs {new_desired_workers}")
-
-            # Make sure node was present and deleted from the desired workers list
-            if len(new_desired_workers) < len(current_desired_workers):
-                payload = {"spec": {"autoscaler_desired_workers": new_desired_workers}}
-                logger.info(f"Deleting VM {node_id} | payload: {new_desired_workers}")
-                self.k8s_api_client.custom_object_api.patch_namespaced_custom_object(
-                    VMRAY_GROUP,
-                    VMRAY_CRD_VER,
-                    self.namespace,
-                    VMRAYCLUSTER_PLURAL,
-                    self.cluster_name,
-                    payload,
-                    async_req=False,
                 )
 
     def create_nodes(
@@ -373,6 +374,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         if head_node_status and node_id == self._get_head_name():
             return head_node_status
         # worker nodes found
+        logger.info(f"Current workers are {current_workers}")
         for worker in current_workers.keys():
             if worker == node_id:
                 return current_workers.get(worker)
