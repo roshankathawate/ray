@@ -542,6 +542,8 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             vmray_cluster_spec = vmray_cluster_response.get("spec", {})
             common_node_config = vmray_cluster_spec.get("common_node_config", {})
             # If min_workers and max_workers are not provided then default to 0
+            # This will not work for different worker types. Each worker type can have
+            # its ownmax and min number of workers.
             self.min_worker_nodes = common_node_config.get("min_workers", 0)
             self.max_worker_nodes = common_node_config.get(
                 "max_workers", self.min_worker_nodes
