@@ -484,6 +484,10 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 "storage_class"
             ] = self.vsphere_config.get("storage_class")
             ray_cluster_config["spec"]["common_node_config"][
+                "vm_password_salt_hash"
+            ] = self.vsphere_config.get("vm_password_salt_hash", "")
+            # TODO: Here min workers not required. Remove it from CRD.
+            ray_cluster_config["spec"]["common_node_config"][
                 "max_workers"
             ] = self.max_worker_nodes
             available_node_types = {}

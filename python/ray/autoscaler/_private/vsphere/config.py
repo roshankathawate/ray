@@ -74,7 +74,6 @@ def configure_run_options(config):
     # Configure common run options
     if "run_options" not in config["docker"]:
         config["docker"]["run_options"] = []
-    config["docker"]["run_options"].append(f"--rm --name {container_name} -d")
     config["docker"]["run_options"].append(f"--env RAY_USE_TLS={tls_enable}")
 
     # Configure head_run_options
@@ -87,9 +86,6 @@ def configure_run_options(config):
     # Configure worker_run_options
     if "worker_run_options" not in config["docker"]:
         config["docker"]["worker_run_options"] = []
-    config["docker"]["worker_run_options"].append(
-        f"--env-file /home/{ssh_user}/ray-worker.env"
-    )
     
     if tls_enable == 1:
         # Generate TLS cert and key for head and worker nodes.
