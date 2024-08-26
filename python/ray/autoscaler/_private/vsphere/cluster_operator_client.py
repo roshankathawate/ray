@@ -35,7 +35,6 @@ from ray.autoscaler.tags import (
 VMRAY_CRD_VER = os.getenv("VMRAY_CRD_VER", "v1alpha1")
 VMRAY_GROUP = "vmray.broadcom.com"
 VMRAYCLUSTER_PLURAL = "vmrayclusters"
-VMNODE_CONFIG_PLURAL = "vmraynodeconfigs"
 
 # VirtualMachineService CRD
 VMSERVICE_CRD_VER = os.getenv("VMSERVICE_CRD_VER", "v1alpha2")
@@ -218,7 +217,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             ):
                 node = worker_node
         ip = node.get("ip", None)
-        # Validate returened IP
+        # Validate returned IP
         if ip and is_ipv4(ip):
             return ip
         logger.info(
@@ -484,11 +483,9 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             ray_cluster_config["spec"]["common_node_config"][
                 "storage_class"
             ] = self.vsphere_config.get("storage_class")
-            # TODO: Here min workers not required. Remove it from CRD.
             ray_cluster_config["spec"]["common_node_config"][
                 "max_workers"
             ] = self.max_worker_nodes
-            ray_cluster_config["spec"]["common_node_config"]["min_workers"] = 2
             available_node_types = {}
             for node_type, node_config in self.available_node_types.items():
                 available_node_types[node_type] = {}
