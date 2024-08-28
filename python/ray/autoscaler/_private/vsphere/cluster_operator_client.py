@@ -170,8 +170,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                     worker, NODE_KIND_WORKER, node_type, STATUS_SETTING_UP, filters
                 )
 
-            logger.info(f"Non terminated nodes are {nodes}")
-            logger.info(f"Tags for nodes are: {tag_cache}")
+            logger.info(f"Non terminated nodes {nodes}, Tags for these are: {tag_cache}")
         return nodes, tag_cache
 
     def is_vm_power_on(self, node_id: str) -> bool:
@@ -233,31 +232,38 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             vmray_cluster_response = self._get_cluster_response()
             vmray_cluster_spec = vmray_cluster_response.get("spec", {})
 
-            # get desired workers
-            current_desired_workers = vmray_cluster_spec.get(
+            # Get desired workers
+            desired_workers = vmray_cluster_spec.get(
                 "autoscaler_desired_workers", {}
             )
-            logger.info(f"Current desired workers: {current_desired_workers}")
-            new_desired_workers = current_desired_workers.copy()
+            logger.info(f"Current desired workers: {desired_workers}")
 
             # remove the node from the desired workers list
-            if node_id in new_desired_workers:
-                del new_desired_workers[node_id]
-                logger.info(f"New desired workers: {new_desired_workers}")
+            if node_id in desired_workers:
 
-                # Make sure node was present and deleted from the desired workers list
-                if len(new_desired_workers) < len(current_desired_workers):
-                    payload = {"spec": {"autoscaler_desired_workers": new_desired_workers}}
-                    logger.info(f"Deleting VM {node_id} | payload: {new_desired_workers}")
-                    self.k8s_api_client.custom_object_api.patch_namespaced_custom_object(
-                        VMRAY_GROUP,
-                        VMRAY_CRD_VER,
-                        self.namespace,
-                        VMRAYCLUSTER_PLURAL,
-                        self.cluster_name,
-                        payload,
-                        async_req=False,
-                    )
+                # By default it follow patch application of `merge-patch+json`
+                # so we need to remove the node ids by making them null.
+                # refs:
+                # 1. https://kubernetes.io/docs/tasks/manage-kubernetes-objects/update-api-object-kubectl-patch/#use-a-json-merge-patch-to-update-a-deployment
+                # 2. https://github.com/kubernetes-client/python/blob/master/kubernetes/client/api/custom_objects_api.py#L3106
+                payload = {
+                    "spec": {
+                        "autoscaler_desired_workers": {
+                            node_id: None
+                        }
+                    }
+                }
+
+                logger.info(f"Deleting VM {node_id} | payload: {payload}")
+                self.k8s_api_client.custom_object_api.patch_namespaced_custom_object(
+                    VMRAY_GROUP,
+                    VMRAY_CRD_VER,
+                    self.namespace,
+                    VMRAYCLUSTER_PLURAL,
+                    self.cluster_name,
+                    payload,
+                    async_req=False,
+                )
             elif node_id == self._get_head_name():
                 # Handle case to delete a head node
                 # Delete VMRayCluster which will delete head node
@@ -277,9 +283,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         node_config: Dict[str, Any],
     ) -> Optional[Dict[str, Any]]:
         """Ask cluster operator to create worker VMs"""
-        logger.info(f"Creating {to_be_launched_node_count} nodes.")
-        logger.info(f"Creating nodes with tags: {tags}")
-        logger.info(f"Creating nodes with config: {node_config}")
+        logger.info(f"Creating {to_be_launched_node_count} nodes with tags: {tags} and with config: {node_config}")
         created_nodes_dict = {}
         with self.lock:
             if to_be_launched_node_count > 0:
@@ -316,7 +320,6 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                         new_desired_workers.update(desired_workers)
 
                     new_desired_workers.update(new_vm_names)
-                    logger.info(f"Adding VMs to desired VMs list: {new_vm_names}")
                     logger.info(f"New desired state will be {new_desired_workers}")
                     if len(new_desired_workers) > self.max_worker_nodes:
                         logger.warning(
@@ -373,7 +376,6 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         if head_node_status and node_id == self._get_head_name():
             return head_node_status
         # worker nodes found
-        logger.info(f"Current workers are {current_workers}")
         for worker in current_workers.keys():
             if worker == node_id:
                 return current_workers.get(worker)
@@ -388,7 +390,6 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 node = {"vm_status": VMNodeStatus.INITIALIZED.value}
                 return node
         logger.info(f"VM {node_id} not found")
-
         return {}
 
     def safe_to_scale(self):
@@ -562,7 +563,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         ingress = status["loadBalancer"].get("ingress", None)
         if not ingress:
             return None
-        logger.info(f"vm service ingress is {ingress}")
+        logger.info(f"VM service ingress is {ingress}")
         return ingress
 
     def _get_vm_service(self):
