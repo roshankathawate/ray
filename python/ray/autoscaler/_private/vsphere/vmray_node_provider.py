@@ -8,7 +8,7 @@ from ray.autoscaler._private.vsphere.cluster_operator_client import (
 from ray.autoscaler._private.vsphere.config import bootstrap_vsphere
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
-    STATUS_UP_TO_DATE,
+    STATUS_SETTING_UP,
     TAG_RAY_CLUSTER_NAME,
     TAG_RAY_NODE_NAME,
     TAG_RAY_NODE_STATUS,
@@ -19,16 +19,21 @@ logger = logging.getLogger(__name__)
 
 class VmRayNodeProvider(NodeProvider):
     max_terminate_nodes = 1000
+    cluster_config = None
 
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.tag_cache = {}
         self.tag_cache_lock = threading.Lock()
-        self.client = ClusterOperatorClient(cluster_name, self.provider_config)
+        self.client = ClusterOperatorClient(
+            cluster_name, provider_config, VmRayNodeProvider.cluster_config
+        )
 
     @staticmethod
     def bootstrap_config(cluster_config):
-        return bootstrap_vsphere(cluster_config)
+        config = bootstrap_vsphere(cluster_config)
+        VmRayNodeProvider.cluster_config = config
+        return config
 
     def non_terminated_nodes(self, tag_filters):
         nodes, tag_cache = self.client.list_vms(tag_filters)
@@ -86,17 +91,19 @@ class VmRayNodeProvider(NodeProvider):
         created_nodes_dict = {}
         if to_be_launched_node_count > 0:
             created_nodes_dict = self.client.create_nodes(
-                tags, to_be_launched_node_count
+                tags, to_be_launched_node_count, node_config
             )
         # make sure to mark newly created nodes as ready
         # so autoscaler shouldn't provision new ones
         with self.tag_cache_lock:
             for node_id in created_nodes_dict.keys():
                 self.tag_cache[node_id] = tags.copy()
-                self.tag_cache[node_id][TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
+                self.tag_cache[node_id][TAG_RAY_NODE_STATUS] = STATUS_SETTING_UP
                 self.tag_cache[node_id][TAG_RAY_NODE_NAME] = node_id
                 self.tag_cache[node_id][TAG_RAY_CLUSTER_NAME] = self.cluster_name
-        logger.info(f"Node {node_id} created with tags: {self.tag_cache[node_id]}")
+                logger.info(
+                    f"Node {node_id} created with tags: {self.tag_cache[node_id]}"
+                )
         return created_nodes_dict
 
     def terminate_node(self, node_id):

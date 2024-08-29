@@ -1,0 +1,23 @@
+apiVersion: vmray.broadcom.com/v1alpha1
+kind: VMRayCluster
+metadata:
+  name: ray-cluster-test
+  namespace: <SUPERVISOR_NAMESPACE>
+  labels: {}
+spec:
+  api_server:
+    ca_cert: ""
+    location: <CPVM_IP>
+  common_node_config:
+    max_workers: 5
+    min_workers: 4
+    node_types: {}
+    storage_class: vsan-default-storage-policy
+    vm_image: vmi-831f86d39cd80defd
+    vm_password_salt_hash: $6$test1234$9/BUZHNkvq.c1miDDMG5cHLmM4V7gbYdGuF0//3gSIh//DOyi7ypPCs6EAA9b8/tidHottL6UG0tG/RqTgAAi/
+    vm_user: ray
+  head_node:
+    setup_commands: []
+    port: 6245
+    vm_class: best-effort-xlarge
+  ray_docker_image: project-taiga-docker-local.artifactory.eng.vmware.com/development/ray:milestone_2
