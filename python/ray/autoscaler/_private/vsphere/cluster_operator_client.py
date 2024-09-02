@@ -7,7 +7,6 @@ from enum import Enum
 from threading import RLock
 from typing import Any, Dict, Optional, Tuple
 
-import yaml
 from kubernetes import client, config
 
 from ray.autoscaler._private.vsphere.utils import is_ipv4
@@ -42,9 +41,6 @@ VMSERVICE_GROUP = "vmoperator.vmware.com"
 VMSERVICE_PLURAL = "virtualmachineservices"
 
 SERVICE_ACCOUNT_TOKEN = os.getenv("SVC_ACCOUNT_TOKEN", None)
-
-DEFAULT_HEAD_NODE_TYPE = "ray.head.default"
-DEFAULT_WORKER_NODE_TYPE = "ray.worker.default"
 
 logger = logging.getLogger(__name__)
 cur_path = os.path.dirname(__file__)
@@ -102,15 +98,15 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
 
         if cluster_config:
             self.max_worker_nodes = cluster_config["max_workers"]
-            # self.min_worker_nodes = cluster_config["min_workers"]
             self.head_setup_commands = cluster_config["head_setup_commands"]
             self.available_node_types = cluster_config["available_node_types"]
+            self.head_node_type = cluster_config["head_node_type"]
 
             # docker configurations.
             self.provider_auth = cluster_config["auth"]
             self.docker = cluster_config["docker"]
         else:
-            self._set_min_max_worker_nodes()
+            self._set_max_worker_nodes()
 
     def list_vms(self, tag_filters: Dict[str, str]) -> Tuple[list, dict]:
         """Queries K8s for VMs in the RayCluster and filter them as per
@@ -127,9 +123,13 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         vmray_cluster_response = self._get_cluster_response()
         if not vmray_cluster_response:
             return nodes, tag_cache
+
         vmray_cluster_status = vmray_cluster_response.get("status", {})
         if not vmray_cluster_status:
             return nodes, tag_cache
+        
+        vmray_cluster_spec = vmray_cluster_response.get("spec", {})
+
         # Check for a head node
         if NODE_KIND_HEAD in tag_filters.values() or not tag_filters:
             head_node_status = vmray_cluster_status.get("head_node_status", {})
@@ -140,13 +140,13 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
 
                 # Setting head node status
                 status = head_node_status.get("vm_status", None)
+                head_nt = vmray_cluster_spec["head_node"]["node_type"]
                 tag_cache[node_id] = self._set_tags(
-                    node_id, NODE_KIND_HEAD, DEFAULT_HEAD_NODE_TYPE, status, filters
+                    node_id, NODE_KIND_HEAD, head_nt, status, filters
                 )
         # Check current worker nodes
         if NODE_KIND_WORKER in tag_filters.values() or not tag_filters:
             current_workers = vmray_cluster_status.get("current_workers", {})
-            vmray_cluster_spec = vmray_cluster_response.get("spec", {})
             desired_workers = vmray_cluster_spec.get("autoscaler_desired_workers", {})
 
             # worker nodes found
@@ -154,7 +154,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 nodes.append(worker)
                 # setting worker node status
                 status = current_workers[worker].get("vm_status", None)
-                node_type = desired_workers.get(worker, DEFAULT_WORKER_NODE_TYPE)
+                node_type = desired_workers.get(worker, "")
 
                 tag_cache[worker] = self._set_tags(
                     worker, NODE_KIND_WORKER, node_type, status, filters
@@ -165,7 +165,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 if worker in current_workers.keys():
                     continue
                 nodes.append(worker)
-                node_type = desired_workers.get(worker, DEFAULT_WORKER_NODE_TYPE)
+                node_type = desired_workers.get(worker, "")
                 tag_cache[worker] = self._set_tags(
                     worker, NODE_KIND_WORKER, node_type, STATUS_SETTING_UP, filters
                 )
@@ -450,70 +450,69 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         return f"{self.cluster_name}-h-" + self.vmraycluster_nounce
 
     def _create_vmraycluster(self):
-        ray_cluster_config = None
-        raycluster_config_path = os.path.join(
-            cur_path, "crd/vmray_v1alpha1_vmraycluster.yaml"
-        )
-        with open(raycluster_config_path, "r") as file:
-            ray_cluster_config = yaml.safe_load(file)
-            ray_cluster_config["metadata"]["name"] = self.cluster_name
-            ray_cluster_config["metadata"]["labels"] = {
-                "vmray.kubernetes.io/head-nounce": self.vmraycluster_nounce,
-                "vmray.io/created-by": "ray-cli",
-            }
-            ray_cluster_config["metadata"]["namespace"] = self.namespace
-            ray_cluster_config["spec"]["api_server"][
-                "location"
-            ] = self.vsphere_config.get("api_server")
-            ray_cluster_config["spec"]["ray_docker_image"] = self.docker["image"]
 
-            # Set head node specific config.
-            ray_cluster_config["spec"]["head_node"] = {}
-            ray_cluster_config["spec"]["head_node"][
-                "head_setup_commands"
-            ] = self.head_setup_commands
-            ray_cluster_config["spec"]["head_node"][
-                "port"
-            ] = 6379  # using default GCS port for now.
+        # Define vmraycluster config structure.
+        ray_cluster_config = {}
+        ray_cluster_config["apiVersion"] = VMRAY_GROUP + "/" + VMRAY_CRD_VER
+        ray_cluster_config["kind"] = "VMRayCluster"
+        ray_cluster_config["metadata"] = {}
+        ray_cluster_config["spec"] = {}
+        
+        # Start reading values from local bootstrap config.
+        ray_cluster_config["metadata"]["name"] = self.cluster_name
+        ray_cluster_config["metadata"]["labels"] = {
+            "vmray.kubernetes.io/head-nounce": self.vmraycluster_nounce,
+            "vmray.io/created-by": "ray-cli",
+        }
+        ray_cluster_config["metadata"]["namespace"] = self.namespace
+        ray_cluster_config["spec"]["api_server"][
+            "location"
+        ] = self.vsphere_config.get("api_server")
+        ray_cluster_config["spec"]["ray_docker_image"] = self.docker["image"]
 
-            # Set common node config & available node types.
-            ray_cluster_config["spec"]["common_node_config"] = {}
-            ray_cluster_config["spec"]["common_node_config"][
-                "vm_image"
-            ] = self.vsphere_config.get("vm_image")
-            ray_cluster_config["spec"]["common_node_config"][
-                "storage_class"
-            ] = self.vsphere_config.get("storage_class")
-            ray_cluster_config["spec"]["common_node_config"][
-                "vm_password_salt_hash"
-            ] = self.vsphere_config.get("vm_password_salt_hash", "")
-            # TODO: Here min workers not required. Remove it from CRD.
-            ray_cluster_config["spec"]["common_node_config"][
-                "max_workers"
-            ] = self.max_worker_nodes
-            available_node_types = {}
-            for node_type, node_config in self.available_node_types.items():
-                available_node_types[node_type] = {}
-                available_node_types[node_type]["vm_class"] = node_config[
-                    "node_config"
-                ].get("vm_class", None)
-                available_node_types[node_type]["resources"] = node_config.get(
-                    "resources", {}
-                )
-                if DEFAULT_HEAD_NODE_TYPE == node_type:
-                    available_node_types[node_type]["min_workers"] = node_config.get(
-                        "min_workers", 1
-                    )
-                    available_node_types[node_type]["max_workers"] = node_config.get(
-                        "max_workers", 1
-                    )
+        # Set head node specific config.
+        ray_cluster_config["spec"]["head_node"] = {}
+        ray_cluster_config["spec"]["head_node"][
+            "head_setup_commands"
+        ] = self.head_setup_commands
+        ray_cluster_config["spec"]["head_node"][
+            "port"
+        ] = 6379  # using default GCS port for now.
 
-            ray_cluster_config["spec"]["common_node_config"][
-                "available_node_types"
-            ] = available_node_types
-            ray_cluster_config["spec"]["common_node_config"][
-                "vm_user"
-            ] = self.provider_auth["ssh_user"]
+        ray_cluster_config["spec"]["head_node"][
+            "node_type"
+        ] = self.head_node_type
+
+        # Set common node config & available node types.
+        ray_cluster_config["spec"]["common_node_config"] = {}
+        ray_cluster_config["spec"]["common_node_config"][
+            "vm_image"
+        ] = self.vsphere_config.get("vm_image")
+        ray_cluster_config["spec"]["common_node_config"][
+            "storage_class"
+        ] = self.vsphere_config.get("storage_class")
+        ray_cluster_config["spec"]["common_node_config"][
+            "vm_password_salt_hash"
+        ] = self.vsphere_config.get("vm_password_salt_hash", "")
+        ray_cluster_config["spec"]["common_node_config"][
+            "max_workers"
+        ] = self.max_worker_nodes
+        available_node_types = {}
+        for node_type, node_config in self.available_node_types.items():
+            available_node_types[node_type] = {}
+            available_node_types[node_type]["vm_class"] = node_config[
+                "node_config"
+            ].get("vm_class", None)
+            available_node_types[node_type]["resources"] = node_config.get(
+                "resources", {}
+            )
+
+        ray_cluster_config["spec"]["common_node_config"][
+            "available_node_types"
+        ] = available_node_types
+        ray_cluster_config["spec"]["common_node_config"][
+            "vm_user"
+        ] = self.provider_auth["ssh_user"]
 
         logger.info(f"Creating VmRayCluster \n{ray_cluster_config}")
         self.k8s_api_client.custom_object_api.create_namespaced_custom_object(
@@ -538,22 +537,17 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         new_tags[TAG_RAY_USER_NODE_TYPE] = node_user_type
         return new_tags
 
-    def _set_min_max_worker_nodes(self):
+    def _set_max_worker_nodes(self):
         vmray_cluster_response = self._get_cluster_response()
         if not self.max_worker_nodes:
             vmray_cluster_spec = vmray_cluster_response.get("spec", {})
             common_node_config = vmray_cluster_spec.get("common_node_config", {})
-            # If min_workers and max_workers are not provided then default to 0
-            # This will not work for different worker types. Each worker type can have
-            # its ownmax and min number of workers.
-            self.min_worker_nodes = common_node_config.get("min_workers", 0)
+            # If max_workers is not provided then default to 2
+            # ref: https://docs.ray.io/en/latest/cluster/vms/references/ray-cluster-configuration.html#max-workers
             self.max_worker_nodes = common_node_config.get(
-                "max_workers", self.min_worker_nodes
+                "max_workers", 2
             )
-            logger.info(
-                f"Min and max workers set to {self.min_worker_nodes}"
-                f"and {self.max_worker_nodes} respectively."
-            )
+            logger.info(f"Max worker is set to {self.max_worker_nodes}")
 
     def _get_vm_service_ingress(self):
         response = self._get_vm_service()
