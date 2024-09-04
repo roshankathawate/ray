@@ -465,6 +465,8 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             "vmray.io/created-by": "ray-cli",
         }
         ray_cluster_config["metadata"]["namespace"] = self.namespace
+
+        ray_cluster_config["spec"]["api_server"] = {}
         ray_cluster_config["spec"]["api_server"][
             "location"
         ] = self.vsphere_config.get("api_server")
@@ -505,6 +507,12 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             ].get("vm_class", None)
             available_node_types[node_type]["resources"] = node_config.get(
                 "resources", {}
+            )
+            available_node_types[node_type]["min_workers"] = node_config.get(
+                "min_workers", 0
+            )
+            available_node_types[node_type]["max_workers"] = node_config.get(
+                "max_workers", 2
             )
 
         ray_cluster_config["spec"]["common_node_config"][
