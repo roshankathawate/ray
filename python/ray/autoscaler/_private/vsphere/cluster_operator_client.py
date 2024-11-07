@@ -1,5 +1,4 @@
 import base64
-import ipaddress
 import logging
 import os
 import random
@@ -10,6 +9,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from kubernetes import client, config
 
+from ray.autoscaler._private.vsphere.utils import is_ipv4
 from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
     NODE_KIND_WORKER,
@@ -217,7 +217,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 node = worker_node
         ip = node.get("ip", None)
         # Validate returned IP
-        if ip and _is_ipv4(ip):
+        if ip and is_ipv4(ip):
             return ip
         logger.info(
             f"External IPv4 address: {ip} of VM: {node_id} \
@@ -614,11 +614,3 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         # Create the secret in the specified namespace
         api_instance.create_namespaced_secret(namespace=namespace, body=secret)
         logger.info(f"Secret {secret_name} created in namespace {namespace}")
-
-
-def _is_ipv4(ip):
-    try:
-        ipaddress.IPv4Address(ip)
-        return True
-    except ipaddress.AddressValueError:
-        return False
