@@ -109,6 +109,15 @@ def configure_run_options(config):
 
     return config
 
+
+def is_dynamic_passthrough(node_config):
+    if "gpu_config" in node_config:
+        gpu_config = node_config["gpu_config"]
+        if gpu_config and gpu_config["dynamic_pci_passthrough"]:
+            return True
+    return False
+
+
 def disable_node_updater(config):
     logger.info(
         "Disabling NodeUpdater threads as Cluster Operator is "
@@ -116,6 +125,7 @@ def disable_node_updater(config):
     )
     config["provider"][DISABLE_NODE_UPDATERS_KEY] = True
     return config
+
 
 def _create_ssh_keys():
     """Create SSH keys as specified"""
