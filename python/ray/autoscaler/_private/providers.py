@@ -62,7 +62,7 @@ def _import_azure(provider_config):
 
 
 def _import_vsphere(provider_config):
-    from ray.autoscaler._private.vsphere.vmray_node_provider import VmRayNodeProvider
+    from ray.autoscaler._private.vsphere.node_provider import VmRayNodeProvider
 
     return VmRayNodeProvider
 
