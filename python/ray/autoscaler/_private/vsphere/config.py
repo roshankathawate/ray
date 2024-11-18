@@ -66,7 +66,6 @@ def configure_key_pair(config):
 
 def configure_run_options(config):
     ssh_user = config["auth"]["ssh_user"]
-    container_name = config["docker"].get("container_name", "ray_container")
     # By default enable TLS for Head-Worker grpc communication
     tls_enable = (
         1 if config["provider"]["vsphere_config"].get("tls_enable", True) else 0
@@ -86,12 +85,12 @@ def configure_run_options(config):
     # Configure worker_run_options
     if "worker_run_options" not in config["docker"]:
         config["docker"]["worker_run_options"] = []
-    
+
     if tls_enable == 1:
         # Generate TLS cert and key for head and worker nodes.
         # This needs to be done before ray start command
-        config["head_start_ray_commands"].insert(0,"sh /home/ray/gencert.sh")
-        config["worker_start_ray_commands"].insert(0,"sh /home/ray/gencert.sh")
+        config["head_start_ray_commands"].insert(0, "sh /home/ray/gencert.sh")
+        config["worker_start_ray_commands"].insert(0, "sh /home/ray/gencert.sh")
 
         config["docker"]["run_options"].append(
             f"-v /home/{ssh_user}/ca.crt:/home/ray/ca.crt"
@@ -102,20 +101,16 @@ def configure_run_options(config):
         config["docker"]["run_options"].append(
             f"-v /home/{ssh_user}/gencert.sh:/home/ray/gencert.sh"
         )
-        
+
         config["docker"]["run_options"].append("--env RAY_TLS_CA_CERT=/home/ray/ca.crt")
-        config["docker"]["run_options"].append("--env RAY_TLS_SERVER_KEY=/home/ray/tls.key")
-        config["docker"]["run_options"].append("--env RAY_TLS_SERVER_CERT=/home/ray/tls.crt")
+        config["docker"]["run_options"].append(
+            "--env RAY_TLS_SERVER_KEY=/home/ray/tls.key"
+        )
+        config["docker"]["run_options"].append(
+            "--env RAY_TLS_SERVER_CERT=/home/ray/tls.crt"
+        )
 
     return config
-
-
-def is_dynamic_passthrough(node_config):
-    if "gpu_config" in node_config:
-        gpu_config = node_config["gpu_config"]
-        if gpu_config and gpu_config["dynamic_pci_passthrough"]:
-            return True
-    return False
 
 
 def disable_node_updater(config):

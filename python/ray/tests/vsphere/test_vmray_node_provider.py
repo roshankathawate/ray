@@ -8,7 +8,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_NAME,
     TAG_RAY_NODE_STATUS,
 )
-from ray.autoscaler._private.vsphere.vmray_node_provider import VmRayNodeProvider
+from ray.autoscaler._private.vsphere.node_provider import VmRayNodeProvider
 
 from python.ray.autoscaler.tags import STATUS_SETTING_UP
 
