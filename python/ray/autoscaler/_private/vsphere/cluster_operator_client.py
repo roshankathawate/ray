@@ -9,7 +9,6 @@ from typing import Any, Dict, Optional, Tuple
 
 from kubernetes import client, config
 
-from ray.autoscaler._private.vsphere.utils import is_ipv4
 from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
     NODE_KIND_WORKER,
@@ -219,7 +218,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 node = worker_node
         ip = node.get("ip", None)
         # Validate returned IP
-        if ip and is_ipv4(ip):
+        if ip and _is_ipv4(ip):
             return ip
         logger.info(
             f"External IPv4 address: {ip} of VM: {node_id} \
