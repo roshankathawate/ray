@@ -30,14 +30,16 @@ idle_timeout_minutes: 5
 # Cloud-provider specific configuration.
 provider:
     type: vsphere
-
-# Credentials configured here will take precedence over credentials set in the
-# environment variables.
     vsphere_config:
+# Supervisor Namespace where the ray cluster should be deployed
         namespace: deploy-ray
+# TLS should be enabled/disabled on grpc channel of Ray
         tls_enable: True
+# The Supervisor control plane VM IP
         api_server: "10.161.29.32"
+# VM image to be used to create Ray nodes.
         vm_image: "vmi-79d5395485c6d3876"
+# VM Storage class to be used for Ray nodes creation.
         storage_class: "wcp-default-storage-profile"
 
 
