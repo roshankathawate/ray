@@ -15,7 +15,7 @@ upscaling_speed: 1.0
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
 docker:
-    image: "project-taiga-docker-local.artifactory.vcfd.broadcom.net/development/ray:test_rk"
+    image: "rayproject/ray-ml:latest"
     # image: rayproject/ray:latest   # use this one if you don't need ML dependencies, it's faster to pull
     container_name: "ray_container"
     # If true, pulls latest version of image. Otherwise, `docker run` will only pull the image
