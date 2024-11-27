@@ -34,7 +34,7 @@ During running `ray up`, the private key is injected into `config["auth"]["ssh_p
 ### Update vSphere Configs ([config.py](./config.py))
 Used to make sure that the user has created the YAML file with valid configs.
 
-### Create Nodes ([node_provider.py](./node_provider.py))
+### Create Nodes ([node_provider.py](./cluster_operator_client.py))
 
 #### Call `create_node`
 Starts the creation of nodes with `create_node` function, which internally calls `_create_node`. The nodes are created in parallel. 
