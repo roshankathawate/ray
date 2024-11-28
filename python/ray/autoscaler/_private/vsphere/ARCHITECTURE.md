@@ -16,14 +16,12 @@ A VI Admin is used to describe a persona that manages the lifecycle of VMware in
 2. Provisioning a vSphere infrastructure.
 3. Managing lifecycle of VMs.
 4. Provisioning [vSAN](https://docs.vmware.com/en/VMware-vSAN/index.html) storage.
-5. Provisioning Supervisor cluster(WCP) on vSphere infrastructure.
-6. Installation of Ray-On-VCF Supervisor Service 
 
 ## [vSphere Tags](https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-vcenter-esxi-management/GUID-16422FF7-235B-4A44-92E2-532F6AED0923.html#:~:text=You%20can%20create%2C%20edit%2C%20and,objects%20in%20the%20vSphere%20inventory)
 A tag is a label that can be assigned to objects on the vSphere inventory. A tag needs to be assigned to a tag category.
 A category allows to group tags together.
 
-# Code Flow.K
+# Code Flow
 
 ## Node Creation on `ray up`
 The following sections explain the code flow in a sequential manner. The execution is triggered from the moment user executed `ray up` command
@@ -37,11 +35,11 @@ Used to make sure that the user has created the YAML file with valid configs.
 ### Create Nodes ([node_provider.py](./cluster_operator_client.py))
 
 #### Call `create_node`
-Starts the creation of nodes with `create_node` function, which internally calls `_create_node`. The nodes are created in parallel. 
+Starts the creation of nodes with `create_node` function, which internally calls `_create_node`.
+
 
 #### Tag nodes with [vSphere Tags](#vsphere-tags)
-The nodes are tagged while their creation is in progress in an async way with `tag_new_vm_instantly` function.
-Post creation of the nodes, the tags on the nodes are updated. 
+The nodes are tagged while their creation is in progress. Post creation of the nodes, the tags on the nodes are updated. 
 
 ## Autoscaling
 
