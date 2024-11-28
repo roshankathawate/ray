@@ -84,9 +84,7 @@ available_node_types:
          # mount the first k random available Nvidia GPU to the VM, if the user set {"GPU": k}.
          # resources: {"CPU": 2, "Memory": 4096, "GPU": 1}
          resources: {}
-         node_config: {"vm_class": "best-effort-xlarge", 
-                     "storage_policy": "vsan default storage policy",
-                     }
+         node_config: {"vm_class": "best-effort-xlarge"}
 
 # Specify the node type of the head node (as configured above).
 head_node_type: ray.head.default
