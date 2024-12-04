@@ -2,27 +2,25 @@
 
 This guide details the steps needed to launch a Ray cluster in a vSphere environment.
 
-To start a vSphere Ray cluster, you will use the Ray cluster launcher with the VMware vSphere Automation SDK for Python.
+Ray integration with vSphere is offered as a vSphere WCP Supervisor Service.
 
-## Prepare the vSphere environment
+## Prepare the vSphere environment 
 
 If you don't already have a vSphere deployment, you can learn more about it by reading the [vSphere documentation](https://docs.vmware.com/en/VMware-vSphere/index.html). The vSphere Ray cluster launcher requires vSphere version 8.0 or later, along with the following prerequisites for creating Ray clusters.
 
 * [A vSphere cluster](https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-vcenter-esxi-management/GUID-F7818000-26E3-4E2A-93D2-FCDCE7114508.html) and [resource pools](https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-resource-management/GUID-60077B40-66FF-4625-934A-641703ED7601.html) to host VMs composing Ray Clusters.
 * A network port group (either for a [standard switch](https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-networking/GUID-E198C88A-F82C-4FF3-96C9-E3DF0056AD0C.html) or [distributed switch](https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-networking/GUID-375B45C7-684C-4C51-BA3C-70E48DFABF04.html)) or an [NSX segment](https://docs.vmware.com/en/VMware-NSX/4.1/administration/GUID-316E5027-E588-455C-88AD-A7DA930A4F0B.html). VMs connected to this network should be able to obtain IP address via DHCP.
 * A datastore that can be accessed by all the hosts in the vSphere cluster.
+* vSphere Cluster with WCP deployed. Supervisor Cluster should be up and running in WCP environment,
 
 Another way to prepare the vSphere environment is with VMware Cloud Foundation (VCF). VCF is a unified software-defined datacenter (SDDC) platform that seamlessly integrates vSphere, vSAN, and NSX into a natively integrated stack, delivering enterprise-ready cloud infrastructure for both private and public cloud environments. If you are using VCF, you can refer to the VCF documentation to  [create workload domains](https://docs.vmware.com/en/VMware-Cloud-Foundation/5.0/vcf-admin/GUID-3A478CF8-AFF8-43D9-9635-4E40A0E372AD.html) for running Ray Clusters. A VCF workload domain comprises one or more vSphere clusters, shared storage like vSAN, and a software-defined network managed by NSX. You can also [create NSX Edge Clusters using VCF](https://docs.vmware.com/en/VMware-Cloud-Foundation/5.0/vcf-admin/GUID-D17D0274-7764-43BD-8252-D9333CA7415A.html) and create segment for Ray VMs network.
 
-## Prepare the frozen VM
+* VI admin registers Ray Supervisor Service definition bundle into the Supervisor Services catalog, using either the vCenter web UI or CLI (e.g. dcli).
+* Vi Admin enables Ray Supervisor service on an existing Supervisor cluster (or enables Supervisor first on a vSphere cluster & then enables Ray Supervisor Service on it). 
+* Enabling Ray Supervisor leads to a Ray operator pod starting up in it's own special namespace (e.g. `ray-system` namespace running a pod of ray-operator, that namespace is part of the supervisor service spec/config bundle), and leads to creation/registration of k8s CRDs in that Supervisor cluster. At this step, a Supervisor cluster is now capable of hosting an actual Ray cluster.
+* Self-service step: DevOps then sees the available CRD, locate their assigned "work area" namespace (e.g. say `my-ml-project-namespace1`) and then uses k8s API/CLI (e.g. kubectl) to instantiates a Supervisor Service managed resource (e.g. say a custom resource object of `RayCluster` CRD) in their namespace. This leads to creation of Ray head & worker node VMs (by the RayService operator/controller pod in `ray-system` ns). Those VMs are vm-operator API `VirtualMachine` custom resource managed VMs and they are also part of the `my-ml-project-namespace1` namespace.
+* (Optional) An alternative to above DevOps+kubectl CLI based Ray cluster creation Aria Automation template approach: VI admin registers a cloud template in the Aria Automation Service Broker catalog, DevOps access Service Broker catalog item UI to trigger deployment of a Ray cluster (effectively wiring up & exposing the Ray Supervisor Service CRDs through Aria Automation UX). 
 
-The vSphere Ray cluster launcher requires the vSphere environment to have a VM in a frozen state for deploying a Ray cluster. This VM has all the dependencies installed and is later used to rapidly create head and worker nodes by VMware's [instant clone](https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-vm-administration/GUID-853B1E2B-76CE-4240-A654-3806912820EB.html) technology. The details of the Ray cluster provisioning process using frozen VM can be found in this [Ray on vSphere architecture document](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/vsphere/ARCHITECTURE.md). 
-
-You can follow the vm-packer-for-ray's [document](https://github.com/vmware-ai-labs/vm-packer-for-ray/blob/main/README.md) to use Packer to create and set up the frozen VM, or a set of frozen VMs in which each one will be hosted on a distinct ESXi host in the vSphere cluster. By default, Ray clusters' head and worker node VMs will be placed in the same resource pool as the frozen VM. When building and deploying the frozen VM, there are a couple of things to note:
-
-* The VM's network adapter should be connected to the port group or NSX segment configured in the above section. And the `Connect At Power On` check box should be selected.
-* After the frozen VM is built, a private key file (`ray-bootstrap-key.pem`) and a public key file (`ray_bootstrap_public_key.key`) will be generated under the HOME directory of the current user. If you want to deploy Ray clusters from another machine, these files should be copied to that machine's HOME directory to be picked up by the vSphere cluster launcher.
-* An OVF will be generated in the content library. If you want to deploy Ray clusters in other vSphere deployments, you can use the content library's [publish and subscribe](https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-vm-administration/GUID-254B2CE8-20A8-43F0-90E8-3F6776C2C896.html) feature to sync the frozen VM's template to another vSphere environment. Then you can leverage Ray Cluster Launcher to help you create a single frozen VM or multiple frozen VMs firstly, then help you create the Ray cluster, check the [document](https://docs.ray.io/en/latest/cluster/vms/references/ray-cluster-configuration.html?highlight=yaml#vsphere-config-frozen-vm) for how to compose the yaml file to help to deploy the frozen VM(s) from an OVF template. 
 
 ## Install Ray cluster launcher
 
@@ -33,26 +31,15 @@ The Ray cluster launcher is part of the `ray` CLI. Use the CLI to start, stop an
 pip install -U ray[default]
 ```
 
-## Install VMware vSphere Automation SDK for Python
-
-Next, install the VMware vSphere Automation SDK for Python.
-
-```bash
-# Install the VMware vSphere Automation SDK for Python.
-pip install 'git+https://github.com/vmware/vsphere-automation-sdk-python.git'
-```
-
-You can append a version tag to install a specific version.
-```bash
-# Install the v8.0.1.0 version of the SDK.
-pip install 'git+https://github.com/vmware/vsphere-automation-sdk-python.git@v8.0.1.0'
-```
-
 ## Start Ray with the Ray cluster launcher
 
-Once the vSphere Automation SDK is installed, you should be ready to launch your cluster using the cluster launcher. The provided [cluster config file](https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/vsphere/example-full.yaml) will create a small cluster with a head node configured to autoscale to up to two workers.
+To start a vSphere Ray cluster, it is required to configure the client environment.
+Users have to perform kubectl vsphere login to the supervisor cluster where the 
+ray-on-vcf service is installed with devops user they have configured.
 
-Note that you need to configure your vSphere credentials and vCenter server address either via setting environment variables or adding them to the Ray cluster configuration YAML file.
+kubectl vsphere login  --server=<SUPERVISOR_CLUSTER_IP> --insecure-skip-tls-verify --vsphere-username <DEVOPS_USER_NAME> --tanzu-kubernetes-cluster-namespace <SUPERVISOR_USER_NAMEPACE>
+
+Once the vsphere login to the supervisor cluster server is successful, you should be ready to launch your cluster using the cluster launcher. The provided [cluster config file](https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/vsphere/example-full.yaml) will create a small cluster with a head node configured to autoscale to up to two workers.
 
 Test that it works by running the following commands from your local machine:
 
@@ -60,22 +47,13 @@ Test that it works by running the following commands from your local machine:
 # Download the example-full.yaml
 wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/vsphere/example-full.yaml
 
-# Setup vSphere credentials using environment variables
-export VSPHERE_SERVER=vcenter-address.example.com
-export VSPHERE_USER=foo
-export VSPHERE_PASSWORD=bar
+# Login to the vSphere supervisor cluster using credentials and kubernetes cluster namespace.
 
-# Edit the example-full.yaml to update the frozen VM related configs under vsphere_config. there are 3 options:
-# 1. If you have a single frozen VM, set the "name" under "frozen_vm".
-# 2. If you have a set of frozen VMs in a resource pool (one VM on each ESXi host), set the "resource_pool" under "frozen_vm".
-# 3. If you don't have any existing frozen VM in the vSphere cluster, but you have an OVF template of a frozen VM, set the "library_item" under "frozen_vm". After that, you need to either set the "name" of the to-be-deployed frozen VM, or set the "resource_pool" to point to an existing resource pool for the to-be-deployed frozen VMs for all the ESXi hosts in the vSphere cluster. Also, the "datastore" must be specified.
-# Optionally configure the head and worker node resource pool and datastore placement.
-# If not configured via environment variables, the vSphere credentials can alternatively be configured in this file.
+kubectl vsphere login  --server=<SUPERVISOR_CLUSTER_IP> --insecure-skip-tls-verify --vsphere-username <DEVOPS_USER_NAME> --tanzu-kubernetes-cluster-namespace <SUPERVISOR_USER_NAMEPACE>
 
 # vi example-full.yaml
 
-# Create or update the cluster. When the command finishes, it will print
-# out the command that can be used to SSH into the cluster head node.
+# Create or update the cluster.
 ray up example-full.yaml
 
 # Get a remote screen on the head node.
