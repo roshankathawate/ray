@@ -127,7 +127,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         vmray_cluster_status = vmray_cluster_response.get("status", {})
         if not vmray_cluster_status:
             return nodes, tag_cache
-        
+
         vmray_cluster_spec = vmray_cluster_response.get("spec", {})
 
         # Check for a head node
@@ -170,7 +170,9 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                     worker, NODE_KIND_WORKER, node_type, STATUS_SETTING_UP, filters
                 )
 
-            logger.info(f"Non terminated nodes {nodes}, Tags for these are: {tag_cache}")
+            logger.info(
+                f"Non terminated nodes {nodes}, Tags for these are: {tag_cache}"
+            )
         return nodes, tag_cache
 
     def is_vm_power_on(self, node_id: str) -> bool:
@@ -233,9 +235,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             vmray_cluster_spec = vmray_cluster_response.get("spec", {})
 
             # Get desired workers
-            desired_workers = vmray_cluster_spec.get(
-                "autoscaler_desired_workers", {}
-            )
+            desired_workers = vmray_cluster_spec.get("autoscaler_desired_workers", {})
             logger.info(f"Current desired workers: {desired_workers}")
 
             # remove the node from the desired workers list
@@ -246,13 +246,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 # refs:
                 # 1. https://kubernetes.io/docs/tasks/manage-kubernetes-objects/update-api-object-kubectl-patch/#use-a-json-merge-patch-to-update-a-deployment
                 # 2. https://github.com/kubernetes-client/python/blob/master/kubernetes/client/api/custom_objects_api.py#L3106
-                payload = {
-                    "spec": {
-                        "autoscaler_desired_workers": {
-                            node_id: None
-                        }
-                    }
-                }
+                payload = {"spec": {"autoscaler_desired_workers": {node_id: None}}}
 
                 logger.info(f"Deleting VM {node_id} | payload: {payload}")
                 self.k8s_api_client.custom_object_api.patch_namespaced_custom_object(
@@ -283,7 +277,9 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         node_config: Dict[str, Any],
     ) -> Optional[Dict[str, Any]]:
         """Ask cluster operator to create worker VMs"""
-        logger.info(f"Creating {to_be_launched_node_count} nodes with tags: {tags} and with config: {node_config}")
+        logger.info(
+            f"Creating {to_be_launched_node_count} nodes with tags: {tags} and with config: {node_config}"
+        )
         created_nodes_dict = {}
         with self.lock:
             if to_be_launched_node_count > 0:
@@ -457,7 +453,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         ray_cluster_config["kind"] = "VMRayCluster"
         ray_cluster_config["metadata"] = {}
         ray_cluster_config["spec"] = {}
-        
+
         # Start reading values from local bootstrap config.
         ray_cluster_config["metadata"]["name"] = self.cluster_name
         ray_cluster_config["metadata"]["labels"] = {
@@ -467,9 +463,9 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         ray_cluster_config["metadata"]["namespace"] = self.namespace
 
         ray_cluster_config["spec"]["api_server"] = {}
-        ray_cluster_config["spec"]["api_server"][
-            "location"
-        ] = self.vsphere_config.get("api_server")
+        ray_cluster_config["spec"]["api_server"]["location"] = self.vsphere_config.get(
+            "api_server"
+        )
         ray_cluster_config["spec"]["ray_docker_image"] = self.docker["image"]
 
         # Set head node specific config.
@@ -481,9 +477,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             "port"
         ] = 6379  # using default GCS port for now.
 
-        ray_cluster_config["spec"]["head_node"][
-            "node_type"
-        ] = self.head_node_type
+        ray_cluster_config["spec"]["head_node"]["node_type"] = self.head_node_type
 
         # Set common node config & available node types.
         ray_cluster_config["spec"]["common_node_config"] = {}
@@ -552,9 +546,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             common_node_config = vmray_cluster_spec.get("common_node_config", {})
             # If max_workers is not provided then default to 2
             # ref: https://docs.ray.io/en/latest/cluster/vms/references/ray-cluster-configuration.html#max-workers
-            self.max_worker_nodes = common_node_config.get(
-                "max_workers", 2
-            )
+            self.max_worker_nodes = common_node_config.get("max_workers", 2)
             logger.info(f"Max worker is set to {self.max_worker_nodes}")
 
     def _get_vm_service_ingress(self):
