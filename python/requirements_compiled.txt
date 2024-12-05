@@ -1634,7 +1634,7 @@ pydot==1.4.2
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 pydub==0.25.1
     # via gradio
-pyflakes==2.3.1
+pyflakes==2.5.0
     # via flake8
 pygame==2.1.2 ; python_version < "3.11"
     # via
