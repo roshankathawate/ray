@@ -73,12 +73,8 @@ Before we start, you will need to install some Python dependencies as follows:
 
          .. tab-item:: vSphere
             :sync: vSphere
-
-            .. code-block:: shell
-
-                $ pip install -U "ray[default]" "git+https://github.com/vmware/vsphere-automation-sdk-python.git"
-
-            vSphere Cluster Launcher Maintainers (GitHub handles): @LaynePeng, @roshankathawate, @JingChen23
+            
+             vSphere Cluster Launcher Maintainers (GitHub handles): @ankitasonawane, @roshankathawate, @vamshikshetty
 
 
 Next, if you're not set up to use your cloud provider from the command line, you'll have to configure your credentials:
@@ -123,9 +119,8 @@ Next, if you're not set up to use your cloud provider from the command line, you
 
             .. code-block:: shell
 
-                $ export VSPHERE_SERVER=192.168.0.1 # Enter your vSphere vCenter Address
-                $ export VSPHERE_USER=user # Enter your username
-                $ export VSPHERE_PASSWORD=password # Enter your password
+                kubectl vsphere login  --server=<SUPERVISOR_CLUSTER_IP> --insecure-skip-tls-verify --vsphere-username
+                 <DEVOPS_USER_NAME> --tanzu-kubernetes-cluster-namespace <SUPERVISOR_USER_NAMEPACE>
 
 
 Create a (basic) Python application
