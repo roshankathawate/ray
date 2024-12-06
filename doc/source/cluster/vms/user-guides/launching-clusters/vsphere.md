@@ -16,30 +16,31 @@ If you don't already have a vSphere deployment, you can learn more about it by r
 Another way to prepare the vSphere environment is with VMware Cloud Foundation (VCF). VCF is a unified software-defined datacenter (SDDC) platform that seamlessly integrates vSphere, vSAN, and NSX into a natively integrated stack, delivering enterprise-ready cloud infrastructure for both private and public cloud environments. If you are using VCF, you can refer to the VCF documentation to  [create workload domains](https://docs.vmware.com/en/VMware-Cloud-Foundation/5.0/vcf-admin/GUID-3A478CF8-AFF8-43D9-9635-4E40A0E372AD.html) for running Ray Clusters. A VCF workload domain comprises one or more vSphere clusters, shared storage like vSAN, and a software-defined network managed by NSX. You can also [create NSX Edge Clusters using VCF](https://docs.vmware.com/en/VMware-Cloud-Foundation/5.0/vcf-admin/GUID-D17D0274-7764-43BD-8252-D9333CA7415A.html) and create segment for Ray VMs network.
 
 * VI admin registers Ray Supervisor Service definition bundle into the Supervisor Services catalog, using either the vCenter web UI or CLI (e.g. dcli).
-* Vi Admin enables Ray Supervisor service on an existing Supervisor cluster (or enables Supervisor first on a vSphere cluster & then enables Ray Supervisor Service on it). 
+* VI Admin enables Ray Supervisor service on an existing Supervisor cluster (or enables Supervisor first on a vSphere cluster & then enables Ray Supervisor Service on it). 
 * Enabling Ray Supervisor leads to a Ray operator pod starting up in it's own special namespace (e.g. `ray-system` namespace running a pod of ray-operator, that namespace is part of the supervisor service spec/config bundle), and leads to creation/registration of k8s CRDs in that Supervisor cluster. At this step, a Supervisor cluster is now capable of hosting an actual Ray cluster.
-* Self-service step: DevOps then sees the available CRD, locate their assigned "work area" namespace (e.g. say `my-ml-project-namespace1`) and then uses k8s API/CLI (e.g. kubectl) to instantiates a Supervisor Service managed resource (e.g. say a custom resource object of `RayCluster` CRD) in their namespace. This leads to creation of Ray head & worker node VMs (by the RayService operator/controller pod in `ray-system` ns). Those VMs are vm-operator API `VirtualMachine` custom resource managed VMs and they are also part of the `my-ml-project-namespace1` namespace.
-* (Optional) An alternative to above DevOps+kubectl CLI based Ray cluster creation Aria Automation template approach: VI admin registers a cloud template in the Aria Automation Service Broker catalog, DevOps access Service Broker catalog item UI to trigger deployment of a Ray cluster (effectively wiring up & exposing the Ray Supervisor Service CRDs through Aria Automation UX). 
 
+## Setting up Ray cluster using Kubectl
+* DevOps then sees the available CRD, locate their assigned "work area" namespace (e.g. say `my-ml-project-namespace1`) and then uses k8s API (e.g. kubectl) to instantiates a Supervisor Service managed resource (e.g. say a custom resource object of `RayCluster` CRD) in their namespace. This leads to creation of Ray head & worker node VMs (by the RayService operator/controller pod in `ray-system` ns). Those VMs are vm-operator API `VirtualMachine` custom resource managed VMs and they are also part of the `my-ml-project-namespace1` namespace.
 
-## Install Ray cluster launcher
+## Setting up Ray cluster using Aria Automation
+* To enable Ray cluster creation via Aria Automation template approach, VI admin registers a cloud template in the Aria Automation Service Broker catalog. DevOps then accesses Service Broker catalog item UI to trigger deployment of a Ray cluster (effectively wiring up & exposing the Ray Supervisor Service CRDs through Aria Automation UX). 
 
-The Ray cluster launcher is part of the `ray` CLI. Use the CLI to start, stop and attach to a running ray cluster using commands such as `ray up`, `ray down` and `ray attach`. You can use pip to install the ray CLI with cluster launcher support. Follow [the Ray installation documentation](installation) for more detailed instructions.
+## Setting up the cluster using Ray CLI
+
+The Ray cluster launcher is part of the `ray` CLI. Use the CLI to start, stop and attach to a running ray cluster using commands such as `ray up`, `ray down` and `ray attach`. You can use pip to install the ray CLI with cluster launcher support. Follow [the Ray installation documentation](installation) for more detailed instructions. 
 
 ```bash
 # install ray
 pip install -U ray[default]
 ```
 
-## Start Ray with the Ray cluster launcher
+* To start a vSphere Ray cluster, it is required to configure the client environment.
+Users have to perform kubectl vsphere login to the Supervisor cluster where the ray-on-vcf service is installed with devops user they have configured.
 
-To start a vSphere Ray cluster, it is required to configure the client environment.
-Users have to perform kubectl vsphere login to the supervisor cluster where the 
-ray-on-vcf service is installed with devops user they have configured.
-
+```bash
 kubectl vsphere login  --server=<SUPERVISOR_CLUSTER_IP> --insecure-skip-tls-verify --vsphere-username <DEVOPS_USER_NAME> --tanzu-kubernetes-cluster-namespace <SUPERVISOR_USER_NAMEPACE>
-
-Once the vsphere login to the supervisor cluster server is successful, you should be ready to launch your cluster using the cluster launcher. The provided [cluster config file](https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/vsphere/example-full.yaml) will create a small cluster with a head node configured to autoscale to up to two workers.
+```
+Once the vsphere login to the Supervisor cluster server is successful, you should be ready to launch your cluster using the cluster launcher. The provided [cluster config file](https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/vsphere/example-full.yaml) will create a small cluster with a head node configured to autoscale to up to two workers.
 
 Test that it works by running the following commands from your local machine:
 
@@ -47,9 +48,9 @@ Test that it works by running the following commands from your local machine:
 # Download the example-full.yaml
 wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/vsphere/example-full.yaml
 
-# Login to the vSphere supervisor cluster using credentials and kubernetes cluster namespace.
-
+# Login to the vSphere Supervisor cluster using credentials and kubernetes cluster namespace.
 kubectl vsphere login  --server=<SUPERVISOR_CLUSTER_IP> --insecure-skip-tls-verify --vsphere-username <DEVOPS_USER_NAME> --tanzu-kubernetes-cluster-namespace <SUPERVISOR_USER_NAMEPACE>
+```
 
 # vi example-full.yaml
 
