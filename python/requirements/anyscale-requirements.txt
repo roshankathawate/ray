@@ -1,10 +1,12 @@
-jupyterlab
+jupyterlab==3.6.1
 ipywidgets
 opentelemetry-api
 opentelemetry-sdk
 opentelemetry-exporter-otlp
 google-cloud-storage
-grpcio
+grpcio>=1.66.1
 grpcio-tools
 pyyaml
 pyopenssl
+certifi
+pycurl

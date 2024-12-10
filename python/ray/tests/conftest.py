@@ -1,6 +1,7 @@
 """
 This file defines the common pytest fixtures used in current directory.
 """
+
 import json
 import logging
 import os
@@ -21,7 +22,7 @@ import pytest
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.conftest_utils import set_override_dashboard_url  # noqa: F401
-from ray._private.runtime_env.pip import PipProcessor
+from ray._private.runtime_env import virtualenv_utils
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 
 from ray._private.test_utils import (
@@ -34,10 +35,12 @@ from ray._private.test_utils import (
     redis_replicas,
     get_redis_cli,
     start_redis_instance,
+    start_redis_sentinel_instance,
+    redis_sentinel_replicas,
     find_available_port,
     wait_for_condition,
     find_free_port,
-    NodeKillerActor,
+    RayletKiller,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
@@ -54,7 +57,9 @@ def pre_envs(monkeypatch):
     yield
 
 
-def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=None):
+def wait_for_redis_to_start(
+    redis_ip_address: str, redis_port: bool, password=None, username=None
+):
     """Wait for a Redis server to be available.
 
     This is accomplished by creating a Redis client and sending a random
@@ -63,7 +68,8 @@ def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=No
     Args:
         redis_ip_address: The IP address of the redis server.
         redis_port: The port of the redis server.
-        password: The password of the redis server.
+        username: The username of the Redis server.
+        password: The password of the Redis server.
 
     Raises:
         Exception: An exception is raised if we could not connect with Redis.
@@ -71,7 +77,7 @@ def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=No
     import redis
 
     redis_client = redis.StrictRedis(
-        host=redis_ip_address, port=redis_port, password=password
+        host=redis_ip_address, port=redis_port, username=username, password=password
     )
     # Wait for the Redis server to start.
     num_retries = START_REDIS_WAIT_RETRIES
@@ -134,6 +140,7 @@ def get_default_fixure_system_config():
         "health_check_initial_delay_ms": 0,
         "health_check_failure_threshold": 10,
         "object_store_full_delay_ms": 100,
+        "local_gc_min_interval_s": 1,
     }
     return system_config
 
@@ -198,6 +205,34 @@ def redis_alive(port, enable_tls):
     except Exception:
         pass
     return False
+
+
+def start_redis_with_sentinel(db_dir):
+    temp_dir = ray._private.utils.get_ray_temp_dir()
+
+    redis_ports = find_available_port(49159, 55535, redis_sentinel_replicas() + 1)
+    sentinel_port = redis_ports[0]
+    master_port = redis_ports[1]
+    redis_processes = [
+        start_redis_instance(temp_dir, p, listen_to_localhost_only=True, db_dir=db_dir)[
+            1
+        ]
+        for p in redis_ports[1:]
+    ]
+
+    # ensure all redis servers are up
+    for port in redis_ports[1:]:
+        wait_for_condition(redis_alive, 3, 100, port=port, enable_tls=False)
+
+    # setup replicas of the master
+    for port in redis_ports[2:]:
+        redis_cli = get_redis_cli(port, False)
+        redis_cli.replicaof("127.0.0.1", master_port)
+        sentinel_process = start_redis_sentinel_instance(
+            temp_dir, sentinel_port, master_port
+        )
+        address_str = f"127.0.0.1:{sentinel_port}"
+        return address_str, redis_processes + [sentinel_process]
 
 
 def start_redis(db_dir):
@@ -273,19 +308,29 @@ def kill_all_redis_server():
     # Find Redis server processes
     redis_procs = []
     for proc in psutil.process_iter(["name", "cmdline"]):
-        if proc.name() == "redis-server":
-            redis_procs.append(proc)
+        try:
+            if proc.name() == "redis-server":
+                redis_procs.append(proc)
+        except psutil.NoSuchProcess:
+            pass
 
     # Kill Redis server processes
     for proc in redis_procs:
-        proc.kill()
+        try:
+            proc.kill()
+        except psutil.NoSuchProcess:
+            pass
 
 
 @contextmanager
-def _setup_redis(request):
+def _setup_redis(request, with_sentinel=False):
     with tempfile.TemporaryDirectory() as tmpdirname:
         kill_all_redis_server()
-        address_str, processes = start_redis(tmpdirname)
+        address_str, processes = (
+            start_redis_with_sentinel(tmpdirname)
+            if with_sentinel
+            else start_redis(tmpdirname)
+        )
         old_addr = os.environ.get("RAY_REDIS_ADDRESS")
         os.environ["RAY_REDIS_ADDRESS"] = address_str
         import uuid
@@ -326,6 +371,12 @@ def external_redis(request):
 
 
 @pytest.fixture
+def external_redis_with_sentinel(request):
+    with _setup_redis(request, True):
+        yield
+
+
+@pytest.fixture
 def shutdown_only(maybe_external_redis):
     yield None
     # The code after the yield will run as teardown code.
@@ -337,12 +388,13 @@ def shutdown_only(maybe_external_redis):
 @pytest.fixture
 def propagate_logs():
     # Ensure that logs are propagated to ancestor handles. This is required if using the
-    # caplog fixture with Ray's logging.
+    # caplog or capsys fixtures with Ray's logging.
     # NOTE: This only enables log propagation in the driver process, not the workers!
-    logger = logging.getLogger("ray")
-    logger.propagate = True
+    logging.getLogger("ray").propagate = True
+    logging.getLogger("ray.data").propagate = True
     yield
-    logger.propagate = False
+    logging.getLogger("ray").propagate = False
+    logging.getLogger("ray.data").propagate = False
 
 
 # Provide a shared Ray instance for a test class
@@ -528,6 +580,15 @@ def ray_start_cluster_head_with_external_redis(request, external_redis):
 
 
 @pytest.fixture
+def ray_start_cluster_head_with_external_redis_sentinel(
+    request, external_redis_with_sentinel
+):
+    param = getattr(request, "param", {})
+    with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
+        yield res
+
+
+@pytest.fixture
 def ray_start_cluster_head_with_env_vars(request, maybe_external_redis, monkeypatch):
     param = getattr(request, "param", {})
     env_vars = param.pop("env_vars", {})
@@ -679,6 +740,11 @@ def tmp_working_dir():
         hello_file = path / "hello"
         with hello_file.open(mode="w") as f:
             f.write("world")
+
+        test_file_module = path / "file_module.py"
+        with test_file_module.open(mode="w") as f:
+            f.write("def hello():\n")
+            f.write("    return 'hello'\n")
 
         module_path = path / "test_module"
         module_path.mkdir(parents=True)
@@ -913,7 +979,7 @@ def _ray_start_chaos_cluster(request):
     assert len(nodes) == 1
 
     if kill_interval is not None:
-        node_killer = get_and_run_resource_killer(NodeKillerActor, kill_interval)
+        node_killer = get_and_run_resource_killer(RayletKiller, kill_interval)
 
     yield cluster
 
@@ -967,7 +1033,7 @@ def cloned_virtualenv():
     # aviod import `pytest_virtualenv` in test case `Minimal install`
     from pytest_virtualenv import VirtualEnv
 
-    if PipProcessor._is_in_virtualenv():
+    if virtualenv_utils.is_in_virtualenv():
         raise RuntimeError("Forbid the use of this fixture in virtualenv")
 
     venv = VirtualEnv(
@@ -1048,7 +1114,7 @@ def append_short_test_summary(rep):
 
     summary_dir = os.environ.get("RAY_TEST_SUMMARY_DIR")
 
-    if platform.system() != "Linux":
+    if platform.system() == "Darwin":
         summary_dir = os.environ.get("RAY_TEST_SUMMARY_DIR_HOST")
 
     if not summary_dir:
@@ -1059,9 +1125,9 @@ def append_short_test_summary(rep):
 
     test_name = rep.nodeid.replace(os.sep, "::")
 
-    if os.name == "nt":
+    if platform.system() == "Windows":
         # ":" is not legal in filenames in windows
-        test_name.replace(":", "$")
+        test_name = test_name.replace(":", "$")
 
     header_file = os.path.join(summary_dir, "000_header.txt")
     summary_file = os.path.join(summary_dir, test_name + ".txt")
@@ -1173,7 +1239,7 @@ def _get_repo_github_path_and_link(file: str, lineno: int) -> Tuple[str, str]:
     if not commit:
         return file, ""
 
-    path = os.path.relpath(file, "/ray")
+    path = file.split("com_github_ray_project_ray/")[-1]
 
     return path, base_url.format(commit=commit, path=path, lineno=lineno)
 
@@ -1183,7 +1249,7 @@ def create_ray_logs_for_failed_test(rep):
 
     # We temporarily restrict to Linux until we have artifact dirs
     # for Windows and Mac
-    if platform.system() != "Linux":
+    if platform.system() != "Linux" and platform.system() != "Windows":
         return
 
     # Only archive failed tests after the "call" phase of the test
@@ -1208,6 +1274,9 @@ def create_ray_logs_for_failed_test(rep):
 
     # Write zipped logs to logs archive dir
     test_name = rep.nodeid.replace(os.sep, "::")
+    if platform.system() == "Windows":
+        # ":" is not legal in filenames in windows
+        test_name = test_name.replace(":", "$")
     output_file = os.path.join(archive_dir, f"{test_name}_{time.time():.4f}")
     shutil.make_archive(output_file, "zip", logs_dir)
 

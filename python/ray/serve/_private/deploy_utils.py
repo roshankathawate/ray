@@ -67,10 +67,10 @@ def deploy_args_to_deployment_info(
     deployment_config_proto_bytes: bytes,
     replica_config_proto_bytes: bytes,
     deployer_job_id: Union[str, bytes],
-    route_prefix: Optional[str],
     docs_path: Optional[str],
     app_name: Optional[str] = None,
     ingress: bool = False,
+    route_prefix: Optional[str] = None,
     **kwargs,
 ) -> DeploymentInfo:
     """Takes deployment args passed to the controller after building an application and
@@ -91,7 +91,7 @@ def deploy_args_to_deployment_info(
 
     return DeploymentInfo(
         actor_name=DeploymentID(
-            deployment_name, app_name
+            name=deployment_name, app_name=app_name
         ).to_replica_actor_class_name(),
         version=version,
         deployment_config=deployment_config,

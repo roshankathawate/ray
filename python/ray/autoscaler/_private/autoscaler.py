@@ -15,6 +15,7 @@ from typing import Any, Callable, Dict, FrozenSet, List, Optional, Set, Tuple, U
 import yaml
 
 import ray
+import ray._private.ray_constants as ray_constants
 from ray.autoscaler._private.constants import (
     AUTOSCALER_HEARTBEAT_TIMEOUT_S,
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
@@ -489,8 +490,11 @@ class StandardAutoscaler:
         assert self.non_terminated_nodes
         assert self.provider
 
-        last_used = self.load_metrics.last_used_time_by_ip
-        horizon = now - (60 * self.config["idle_timeout_minutes"])
+        last_used = self.load_metrics.ray_nodes_last_used_time_by_ip
+
+        idle_timeout_s = 60 * self.config["idle_timeout_minutes"]
+
+        last_used_cutoff = now - idle_timeout_s
 
         # Sort based on last used to make sure to keep min_workers that
         # were most recently used. Otherwise, _keep_min_workers_of_node_type
@@ -538,7 +542,8 @@ class StandardAutoscaler:
                 continue
 
             node_ip = self.provider.internal_ip(node_id)
-            if node_ip in last_used and last_used[node_ip] < horizon:
+
+            if node_ip in last_used and last_used[node_ip] < last_used_cutoff:
                 self.schedule_node_termination(node_id, "idle", logger.info)
                 # Get the local time of the node's last use as a string.
                 formatted_last_used_time = time.asctime(
@@ -826,7 +831,11 @@ class StandardAutoscaler:
         pending = []
         infeasible = []
         for bundle in unfulfilled:
-            placement_group = any("_group_" in k or k == "bundle" for k in bundle)
+            placement_group = any(
+                "_group_" in k
+                or k == ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
+                for k in bundle
+            )
             if placement_group:
                 continue
             if self.resource_demand_scheduler.is_feasible(bundle):

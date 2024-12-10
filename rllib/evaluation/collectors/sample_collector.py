@@ -2,10 +2,9 @@ import logging
 from abc import ABCMeta, abstractmethod
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
-from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
-from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.typing import AgentID, EnvID, EpisodeID, PolicyID, TensorType
 
 if TYPE_CHECKING:
@@ -16,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 # fmt: off
 # __sphinx_doc_begin__
-@PublicAPI
+@OldAPIStack
 class SampleCollector(metaclass=ABCMeta):
     """Collects samples for all policies and agents from a multi-agent env.
 
@@ -61,7 +60,7 @@ class SampleCollector(metaclass=ABCMeta):
     def add_init_obs(
         self,
         *,
-        episode: Episode,
+        episode,
         agent_id: AgentID,
         policy_id: PolicyID,
         init_obs: TensorType,
@@ -160,7 +159,7 @@ class SampleCollector(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def episode_step(self, episode: Episode) -> None:
+    def episode_step(self, episode) -> None:
         """Increases the episode step counter (across all agents) by one.
 
         Args:
@@ -240,7 +239,7 @@ class SampleCollector(metaclass=ABCMeta):
     @abstractmethod
     def postprocess_episode(
         self,
-        episode: Episode,
+        episode,
         is_done: bool = False,
         check_dones: bool = False,
         build: bool = False,
