@@ -80,6 +80,8 @@ lint_clang-format:
   script: 
     - | 
       bash --login -i -c "
+        virtualenv vmray-pyenv
+        source vmray-pyenv/bin/activate
         pip install -c python/requirements_compiled.txt clang-format
         ./ci/lint/check-git-clang-format-output.sh 
       "
@@ -96,6 +98,8 @@ lint_code-format:
   script:
     - | 
       bash --login -i -c "
+        virtualenv vmray-pyenv
+        source vmray-pyenv/bin/activate
         pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
         FORMAT_SH_PRINT_DIFF=1 ./ci/lint/format.sh --all-scripts
       "
@@ -112,6 +116,8 @@ lint_untested-code-snippet:
   script: 
     - | 
       bash --login -i -c "
+        virtualenv vmray-pyenv
+        source vmray-pyenv/bin/activate
         pip install -c python/requirements_compiled.txt semgrep
         semgrep ci --config semgrep.yml
       "
@@ -143,6 +149,8 @@ lint_doc-readme:
   script: 
     - | 
       bash --login -i -c "
+        virtualenv vmray-pyenv
+        source vmray-pyenv/bin/activate
         pip install -c python/requirements_compiled.txt docutils
         cd python && python setup.py check --restructuredtext --strict --metadata
       "
@@ -218,6 +226,8 @@ lint_pytest-format:
   script: 
     - | 
       bash --login -i -c "
+        virtualenv vmray-pyenv
+        source vmray-pyenv/bin/activate
         pip install -c python/requirements_compiled.txt yq
         ./ci/lint/check-pytest-format.sh
       "
@@ -286,6 +296,8 @@ unit-test_Tune-soft-imports-test:
         # no TUNE_TESTING=1 on purpose
         ./ci/env/install-dependencies.sh
         ./ci/env/env_info.sh
+        virtualenv vmray-pyenv
+        source vmray-pyenv/bin/activate
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
         bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=soft_imports python/ray/tune/...
@@ -302,6 +314,8 @@ pytest-test_basic:
   before_script:
     - |
       bash --login -i -c "
+        virtualenv vmray-pyenv
+        source vmray-pyenv/bin/activate
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
@@ -322,6 +336,8 @@ pytest-test_vsphere:
   before_script:
     - |
       bash --login -i -c "
+        virtualenv vmray-pyenv
+        source vmray-pyenv/bin/activate
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
@@ -351,6 +367,8 @@ deploy-ray:
       cp key/ray_bootstrap_public_key.key ~/ray_bootstrap_public_key.key
       chmod 0600 ~/ray-bootstrap-key.pem
       bash --login -i -c "
+        virtualenv vmray-pyenv
+        source vmray-pyenv/bin/activate
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
@@ -389,6 +407,8 @@ deploy-single-ray-from-ovf:
       cp key/ray_bootstrap_public_key.key ~/ray_bootstrap_public_key.key
       chmod 0600 ~/ray-bootstrap-key.pem
       bash --login -i -c "
+        virtualenv vmray-pyenv
+        source vmray-pyenv/bin/activate
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
@@ -432,6 +452,8 @@ deploy-multi-ray-from-ovf:
       cp key/ray_bootstrap_public_key.key ~/ray_bootstrap_public_key.key
       chmod 0600 ~/ray-bootstrap-key.pem
       bash --login -i -c "
+        virtualenv vmray-pyenv
+        source vmray-pyenv/bin/activate
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
@@ -476,6 +498,8 @@ functionality-ray-accessibility:
       cp key/ray_bootstrap_public_key.key ~/ray_bootstrap_public_key.key
       chmod 0600 ~/ray-bootstrap-key.pem
       bash --login -i -c "
+        virtualenv vmray-pyenv
+        source vmray-pyenv/bin/activate
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
@@ -515,6 +539,8 @@ functionality-ray-resource-validity:
       cp key/ray_bootstrap_public_key.key ~/ray_bootstrap_public_key.key
       chmod 0600 ~/ray-bootstrap-key.pem
       bash --login -i -c "
+        virtualenv vmray-pyenv
+        source vmray-pyenv/bin/activate
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
@@ -556,6 +582,8 @@ delete-ray:
       cp key/ray_bootstrap_public_key.key ~/ray_bootstrap_public_key.key
       chmod 0600 ~/ray-bootstrap-key.pem
       bash --login -i -c "
+        virtualenv vmray-pyenv
+        source vmray-pyenv/bin/activate
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
@@ -595,6 +623,8 @@ delete-single-ray-from-ovf:
       cp key/ray_bootstrap_public_key.key ~/ray_bootstrap_public_key.key
       chmod 0600 ~/ray-bootstrap-key.pem
       bash --login -i -c "
+        virtualenv vmray-pyenv
+        source vmray-pyenv/bin/activate
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
@@ -638,6 +668,8 @@ delete-multi-ray-from-ovf:
       cp key/ray_bootstrap_public_key.key ~/ray_bootstrap_public_key.key
       chmod 0600 ~/ray-bootstrap-key.pem
       bash --login -i -c "
+        virtualenv vmray-pyenv
+        source vmray-pyenv/bin/activate
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
@@ -683,6 +715,8 @@ deploy-GPU-ray:
       cp key/ray_bootstrap_public_key.key ~/ray_bootstrap_public_key.key
       chmod 0600 ~/ray-bootstrap-key.pem
       bash --login -i -c "
+        virtualenv vmray-pyenv
+        source vmray-pyenv/bin/activate
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
@@ -723,6 +757,8 @@ functionality-GPU-ray-test:
       cp key/ray_bootstrap_public_key.key ~/ray_bootstrap_public_key.key
       chmod 0600 ~/ray-bootstrap-key.pem
       bash --login -i -c "
+        virtualenv vmray-pyenv
+        source vmray-pyenv/bin/activate
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
@@ -762,6 +798,8 @@ delete-GPU-ray:
       cp key/ray_bootstrap_public_key.key ~/ray_bootstrap_public_key.key
       chmod 0600 ~/ray-bootstrap-key.pem
       bash --login -i -c "
+        virtualenv vmray-pyenv
+        source vmray-pyenv/bin/activate
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
@@ -803,6 +841,8 @@ deploy-dev-ray:
       cp key/ray_bootstrap_public_key.key ~/ray_bootstrap_public_key.key
       chmod 0600 ~/ray-bootstrap-key.pem
       bash --login -i -c "
+        virtualenv vmray-pyenv
+        source vmray-pyenv/bin/activate
         pip install -U $RAY_WHL
         python python/ray/setup-dev.py --skip rllib air tune train cloudpickle data internal tests experimental util workflow dag widgets cluster_utils.py _private dashboard scripts serve -y
       "
