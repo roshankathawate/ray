@@ -1,20 +1,93 @@
-import time
 from typing import Any, Dict, Optional
-from unittest.mock import patch
 
 import numpy as np
 import pytest
+from typing_extensions import Hashable
 
 import ray
+from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.memory_tracing import (
     leak_report,
     trace_allocation,
     trace_deallocation,
 )
-from ray.data._internal.util import _check_pyarrow_version, _split_list
-from ray.data.datasource.parquet_datasource import ParquetDatasource
+from ray.data._internal.remote_fn import _make_hashable, cached_remote_fn
+from ray.data._internal.util import (
+    NULL_SENTINEL,
+    _check_pyarrow_version,
+    _split_list,
+    iterate_with_retry,
+)
 from ray.data.tests.conftest import *  # noqa: F401, F403
+
+
+def test_cached_remote_fn():
+    def foo():
+        pass
+
+    cpu_only_foo = cached_remote_fn(foo, num_cpus=1)
+    cached_cpu_only_foo = cached_remote_fn(foo, num_cpus=1)
+
+    assert cpu_only_foo == cached_cpu_only_foo
+
+    gpu_only_foo = cached_remote_fn(foo, num_gpus=1)
+
+    assert cpu_only_foo != gpu_only_foo
+
+
+def test_null_sentinel():
+    """Check that NULL_SENTINEL sorts greater than any other value."""
+    assert NULL_SENTINEL > 1000
+    assert NULL_SENTINEL > "abc"
+    assert NULL_SENTINEL == NULL_SENTINEL
+    assert NULL_SENTINEL != 1000
+    assert NULL_SENTINEL != "abc"
+    assert not NULL_SENTINEL < 1000
+    assert not NULL_SENTINEL < "abc"
+    assert not NULL_SENTINEL <= 1000
+    assert not NULL_SENTINEL <= "abc"
+    assert NULL_SENTINEL >= 1000
+    assert NULL_SENTINEL >= "abc"
+
+
+def test_make_hashable():
+    valid_args = {
+        "int": 0,
+        "float": 1.2,
+        "str": "foo",
+        "dict": {
+            0: 0,
+            1.2: 1.2,
+        },
+        "list": list(range(10)),
+        "tuple": tuple(range(3)),
+        "type": Hashable,
+    }
+
+    hashable_args = _make_hashable(valid_args)
+
+    assert hash(hashable_args) == hash(
+        (
+            ("dict", ((0, 0), (1.2, 1.2))),
+            ("float", 1.2),
+            ("int", 0),
+            ("list", (0, 1, 2, 3, 4, 5, 6, 7, 8, 9)),
+            ("str", "foo"),
+            ("tuple", (0, 1, 2)),
+            ("type", Hashable),
+        )
+    )
+
+    # Invalid case # 1: can't mix up key types
+    invalid_args = {0: 1, "bar": "baz"}
+
+    with pytest.raises(TypeError) as exc_info:
+        _make_hashable(invalid_args)
+
+    assert (
+        str(exc_info.value) == "'<' not supported between instances of 'str' and 'int'"
+    )
 
 
 def test_check_pyarrow_version_bounds(unsupported_pyarrow_version):
@@ -113,30 +186,54 @@ def get_parquet_read_logical_op(
     return read_op
 
 
-def test_cluster_resources():
-    """Test ray.data._internal.util.cluster_resources()."""
-    resources = {"CPU": 4, "GPU": 1}
-    cache_interval_s = 0.1
-    with patch.object(
-        ray.data._internal.util,
-        "CLUSTER_RESOURCES_FETCH_INTERVAL_SECONDS",
-        cache_interval_s,
-    ):
-        with patch(
-            "ray.cluster_resources",
-            return_value=resources,
-        ) as ray_cluster_resources:
-            # The first call should call ray.cluster_resources().
-            assert ray.data._internal.util.cluster_resources() == resources
-            assert ray_cluster_resources.call_count == 1
-            # The second call should return the cached value.
-            assert ray.data._internal.util.cluster_resources() == resources
-            assert ray_cluster_resources.call_count == 1
-            time.sleep(cache_interval_s)
-            # After the cache interval, the third call should call
-            # ray.cluster_resources() again.
-            assert ray.data._internal.util.cluster_resources() == resources
-            assert ray_cluster_resources.call_count == 2
+@ray.remote(num_cpus=0)
+class ConcurrencyCounter:
+    def __init__(self):
+        self.concurrency = 0
+        self.max_concurrency = 0
+
+    def inc(self):
+        self.concurrency += 1
+        if self.concurrency > self.max_concurrency:
+            self.max_concurrency = self.concurrency
+        return self.concurrency
+
+    def decr(self):
+        self.concurrency -= 1
+        return self.concurrency
+
+    def get_max_concurrency(self):
+        return self.max_concurrency
+
+
+def test_iterate_with_retry():
+    has_raised_error = False
+
+    class MockIterable:
+        """Iterate over the numbers 0, 1, 2, and raise an error on the first iteration
+        attempt.
+        """
+
+        def __init__(self):
+            self._index = -1
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            self._index += 1
+
+            if self._index >= 3:
+                raise StopIteration
+
+            nonlocal has_raised_error
+            if self._index == 1 and not has_raised_error:
+                has_raised_error = True
+                raise RuntimeError("Transient error")
+
+            return self._index
+
+    assert list(iterate_with_retry(MockIterable, description="get item")) == [0, 1, 2]
 
 
 if __name__ == "__main__":

@@ -98,10 +98,6 @@ cdef class Config:
         return RayConfig.instance().record_ref_creation_sites()
 
     @staticmethod
-    def start_python_importer_thread():
-        return RayConfig.instance().start_python_importer_thread()
-
-    @staticmethod
     def REDIS_CA_CERT():
         return RayConfig.instance().REDIS_CA_CERT()
 
@@ -172,3 +168,7 @@ cdef class Config:
     @staticmethod
     def gcs_rpc_server_reconnect_timeout_s():
         return RayConfig.instance().gcs_rpc_server_reconnect_timeout_s()
+
+    @staticmethod
+    def maximum_gcs_destroyed_actor_cached_count():
+        return RayConfig.instance().maximum_gcs_destroyed_actor_cached_count()
