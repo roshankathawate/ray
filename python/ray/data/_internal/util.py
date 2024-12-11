@@ -13,7 +13,6 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    Dict,
     Iterable,
     Iterator,
     List,
@@ -27,20 +26,25 @@ import numpy as np
 
 import ray
 from ray._private.utils import _get_pyarrow_version
-from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
-from ray.data.context import WARN_PREFIX, DataContext
+from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 
 if TYPE_CHECKING:
     import pandas
     import pyarrow
 
     from ray.data._internal.compute import ComputeStrategy
-    from ray.data._internal.sort import SortKey
+    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data.block import Block, BlockMetadata, UserDefinedFunction
     from ray.data.datasource import Datasource, Reader
     from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(__name__)
+
+
+KiB = 1024  # bytes
+MiB = 1024 * KiB
+GiB = 1024 * MiB
+
 
 # NOTE: Make sure that these lower and upper bounds stay in sync with version
 # constraints given in python/setup.py.
@@ -56,23 +60,26 @@ LazyModule = Union[None, bool, ModuleType]
 _pyarrow_dataset: LazyModule = None
 
 
-cached_cluster_resources = {}
-cluster_resources_last_fetch_time = 0
-CLUSTER_RESOURCES_FETCH_INTERVAL_SECONDS = 10
+class _NullSentinel:
+    """Sentinel value that sorts greater than any other value."""
+
+    def __eq__(self, other):
+        return isinstance(other, _NullSentinel)
+
+    def __lt__(self, other):
+        return False
+
+    def __le__(self, other):
+        return isinstance(other, _NullSentinel)
+
+    def __gt__(self, other):
+        return True
+
+    def __ge__(self, other):
+        return True
 
 
-def cluster_resources() -> Dict[str, float]:
-    """Fetch Ray cluster resources with cache."""
-    global cached_cluster_resources
-    global cluster_resources_last_fetch_time
-    now = time.time()
-    if (
-        now - cluster_resources_last_fetch_time
-        > CLUSTER_RESOURCES_FETCH_INTERVAL_SECONDS
-    ):
-        cached_cluster_resources = ray.cluster_resources()
-        cluster_resources_last_fetch_time = now
-    return cached_cluster_resources
+NULL_SENTINEL = _NullSentinel()
 
 
 def _lazy_import_pyarrow_dataset() -> LazyModule:
@@ -128,13 +135,13 @@ def _autodetect_parallelism(
     mem_size: Optional[int] = None,
     placement_group: Optional["PlacementGroup"] = None,
     avail_cpus: Optional[int] = None,
-) -> (int, str, int, Optional[int]):
+) -> Tuple[int, str, Optional[int]]:
     """Returns parallelism to use and the min safe parallelism to avoid OOMs.
 
     This detects parallelism using the following heuristics, applied in order:
 
-     1) We start with the default parallelism of 200. This can be overridden by
-        setting the `min_parallelism` attribute of
+     1) We start with the default value of 200. This can be overridden by
+        setting the `read_op_min_num_blocks` attribute of
         :class:`~ray.data.context.DataContext`.
      2) Min block size. If the parallelism would make blocks smaller than this
         threshold, the parallelism is reduced to avoid the overhead of tiny blocks.
@@ -160,9 +167,8 @@ def _autodetect_parallelism(
 
     Returns:
         Tuple of detected parallelism (only if -1 was specified), the reason
-        for the detected parallelism (only if -1 was specified), the min safe
-        parallelism (which can be used to generate warnings about large
-        blocks), and the estimated inmemory size of the dataset.
+        for the detected parallelism (only if -1 was specified), and the estimated
+        inmemory size of the dataset.
     """
     min_safe_parallelism = 1
     max_reasonable_parallelism = sys.maxsize
@@ -176,18 +182,33 @@ def _autodetect_parallelism(
     if parallelism < 0:
         if parallelism != -1:
             raise ValueError("`parallelism` must either be -1 or a positive integer.")
+
+        if (
+            ctx.min_parallelism is not None
+            and ctx.min_parallelism != DEFAULT_READ_OP_MIN_NUM_BLOCKS
+            and ctx.read_op_min_num_blocks == DEFAULT_READ_OP_MIN_NUM_BLOCKS
+        ):
+            logger.warning(
+                "``DataContext.min_parallelism`` is deprecated in Ray 2.10. "
+                "Please specify ``DataContext.read_op_min_num_blocks`` instead."
+            )
+            ctx.read_op_min_num_blocks = ctx.min_parallelism
+
         # Start with 2x the number of cores as a baseline, with a min floor.
         if placement_group is None:
             placement_group = ray.util.get_current_placement_group()
         avail_cpus = avail_cpus or _estimate_avail_cpus(placement_group)
         parallelism = max(
-            min(ctx.min_parallelism, max_reasonable_parallelism),
+            min(ctx.read_op_min_num_blocks, max_reasonable_parallelism),
             min_safe_parallelism,
             avail_cpus * 2,
         )
 
-        if parallelism == ctx.min_parallelism:
-            reason = f"DataContext.get_current().min_parallelism={ctx.min_parallelism}"
+        if parallelism == ctx.read_op_min_num_blocks:
+            reason = (
+                "DataContext.get_current().read_op_min_num_blocks="
+                f"{ctx.read_op_min_num_blocks}"
+            )
         elif parallelism == max_reasonable_parallelism:
             reason = (
                 "output blocks of size at least "
@@ -212,7 +233,7 @@ def _autodetect_parallelism(
             f"estimated_data_size={mem_size}."
         )
 
-    return parallelism, reason, min_safe_parallelism, mem_size
+    return parallelism, reason, mem_size
 
 
 def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
@@ -263,7 +284,7 @@ def _warn_on_high_parallelism(requested_parallelism, num_read_tasks):
         and num_read_tasks > available_cpu_slots * 4
         and num_read_tasks >= 5000
     ):
-        logger.warn(
+        logger.warning(
             f"{WARN_PREFIX} The requested parallelism of {requested_parallelism} "
             "is more than 4x the number of available CPU slots in the cluster of "
             f"{available_cpu_slots}. This can "
@@ -587,32 +608,32 @@ def get_compute_strategy(
             )
         return compute
     elif concurrency is not None:
-        if not is_callable_class:
-            # Currently do not support concurrency control with function,
-            # i.e., running with Ray Tasks (`TaskPoolMapOperator`).
-            logger.warning(
-                "``concurrency`` is set, but ``fn`` is not a callable class: "
-                f"{fn}. ``concurrency`` are currently only supported when "
-                "``fn`` is a callable class."
-            )
-            return TaskPoolStrategy()
-
         if isinstance(concurrency, tuple):
             if (
                 len(concurrency) == 2
                 and isinstance(concurrency[0], int)
                 and isinstance(concurrency[1], int)
             ):
-                return ActorPoolStrategy(
-                    min_size=concurrency[0], max_size=concurrency[1]
-                )
+                if is_callable_class:
+                    return ActorPoolStrategy(
+                        min_size=concurrency[0], max_size=concurrency[1]
+                    )
+                else:
+                    raise ValueError(
+                        "``concurrency`` is set as a tuple of integers, but ``fn`` "
+                        f"is not a callable class: {fn}. Use ``concurrency=n`` to "
+                        "control maximum number of workers to use."
+                    )
             else:
                 raise ValueError(
                     "``concurrency`` is expected to be set as a tuple of "
                     f"integers, but got: {concurrency}."
                 )
         elif isinstance(concurrency, int):
-            return ActorPoolStrategy(size=concurrency)
+            if is_callable_class:
+                return ActorPoolStrategy(size=concurrency)
+            else:
+                return TaskPoolStrategy(size=concurrency)
         else:
             raise ValueError(
                 "``concurrency`` is expected to be set as an integer or a "
@@ -655,15 +676,11 @@ def capitalize(s: str):
 def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block":
     from ray.data.block import BlockAccessor, BlockExecStats
 
+    block = BlockAccessor.for_block(df).to_arrow()
     stats = BlockExecStats.builder()
-    import pyarrow as pa
-
-    block = pa.table(df)
     return (
         block,
-        BlockAccessor.for_block(block).get_metadata(
-            input_files=None, exec_stats=stats.build()
-        ),
+        BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build()),
     )
 
 
@@ -674,9 +691,7 @@ def ndarray_to_block(ndarray: np.ndarray, ctx: DataContext) -> "Block":
 
     stats = BlockExecStats.builder()
     block = BlockAccessor.batch_to_block({"data": ndarray})
-    metadata = BlockAccessor.for_block(block).get_metadata(
-        input_files=None, exec_stats=stats.build()
-    )
+    metadata = BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
     return block, metadata
 
 
@@ -686,9 +701,7 @@ def get_table_block_metadata(
     from ray.data.block import BlockAccessor, BlockExecStats
 
     stats = BlockExecStats.builder()
-    return BlockAccessor.for_block(table).get_metadata(
-        input_files=None, exec_stats=stats.build()
-    )
+    return BlockAccessor.for_block(table).get_metadata(exec_stats=stats.build())
 
 
 def unify_block_metadata_schema(
@@ -699,6 +712,7 @@ def unify_block_metadata_schema(
     """
     # Some blocks could be empty, in which case we cannot get their schema.
     # TODO(ekl) validate schema is the same across different blocks.
+    from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 
     # First check if there are blocks with computed schemas, then unify
     # valid schemas from all such blocks.
@@ -713,7 +727,7 @@ def unify_block_metadata_schema(
         except ImportError:
             pa = None
         # If the result contains PyArrow schemas, unify them
-        if pa is not None and any(isinstance(s, pa.Schema) for s in schemas_to_unify):
+        if pa is not None and all(isinstance(s, pa.Schema) for s in schemas_to_unify):
             return unify_schemas(schemas_to_unify)
         # Otherwise, if the resulting schemas are simple types (e.g. int),
         # return the first schema.
@@ -736,6 +750,16 @@ def find_partition_index(
         col_name = columns[i]
         col_vals = table[col_name].to_numpy()[left:right]
         desired_val = desired[i]
+
+        # Handle null values - replace them with sentinel values
+        if desired_val is None:
+            desired_val = NULL_SENTINEL
+
+        # Replace None/NaN values in col_vals with sentinel
+        null_mask = col_vals == None  # noqa: E711
+        if null_mask.any():
+            col_vals = col_vals.copy()  # Make a copy to avoid modifying original
+            col_vals[null_mask] = NULL_SENTINEL
 
         prevleft = left
         if descending is True:
@@ -945,7 +969,6 @@ def make_async_gen(
             if isinstance(next_item, Exception):
                 raise next_item
             if isinstance(next_item, Sentinel):
-                logger.debug(f"Thread {next_item.thread_index} finished.")
                 num_threads_finished += 1
             else:
                 yield next_item
@@ -963,9 +986,9 @@ def make_async_gen(
 
 def call_with_retry(
     f: Callable[[], Any],
-    match: List[str],
     description: str,
     *,
+    match: Optional[List[str]] = None,
     max_attempts: int = 10,
     max_backoff_s: int = 32,
 ) -> Any:
@@ -973,7 +996,8 @@ def call_with_retry(
 
     Args:
         f: The function to retry.
-        match: A list of strings to match in the exception message.
+        match: A list of strings to match in the exception message. If ``None``, any
+            error is retried.
         description: An imperitive description of the function being retried. For
             example, "open the file".
         max_attempts: The maximum number of attempts to retry.
@@ -985,10 +1009,63 @@ def call_with_retry(
         try:
             return f()
         except Exception as e:
-            is_retryable = any([pattern in str(e) for pattern in match])
+            is_retryable = match is None or any(
+                [pattern in str(e) for pattern in match]
+            )
             if is_retryable and i + 1 < max_attempts:
                 # Retry with binary expoential backoff with random jitter.
-                backoff = min((2 ** (i + 1)) * random.random(), max_backoff_s)
+                backoff = min((2 ** (i + 1)), max_backoff_s) * random.random()
+                logger.debug(
+                    f"Retrying {i+1} attempts to {description} after {backoff} seconds."
+                )
+                time.sleep(backoff)
+            else:
+                raise e from None
+
+
+def iterate_with_retry(
+    iterable_factory: Callable[[], Iterable],
+    description: str,
+    *,
+    match: Optional[List[str]] = None,
+    max_attempts: int = 10,
+    max_backoff_s: int = 32,
+) -> Any:
+    """Iterate through an iterable with retries.
+
+    If the iterable raises an exception, this function recreates and re-iterates
+    through the iterable, while skipping the items that have already been yielded.
+
+    Args:
+        iterable_factory: A no-argument function that creates the iterable.
+        match: A list of strings to match in the exception message. If ``None``, any
+            error is retried.
+        description: An imperitive description of the function being retried. For
+            example, "open the file".
+        max_attempts: The maximum number of attempts to retry.
+        max_backoff_s: The maximum number of seconds to backoff.
+    """
+    assert max_attempts >= 1, f"`max_attempts` must be positive. Got {max_attempts}."
+
+    num_items_yielded = 0
+    for i in range(max_attempts):
+        try:
+            iterable = iterable_factory()
+            for i, item in enumerate(iterable):
+                if i < num_items_yielded:
+                    # Skip items that have already been yielded.
+                    continue
+
+                num_items_yielded += 1
+                yield item
+            return
+        except Exception as e:
+            is_retryable = match is None or any(
+                [pattern in str(e) for pattern in match]
+            )
+            if is_retryable and i + 1 < max_attempts:
+                # Retry with binary expoential backoff with random jitter.
+                backoff = min((2 ** (i + 1)), max_backoff_s) * random.random()
                 logger.debug(
                     f"Retrying {i+1} attempts to {description} after {backoff} seconds."
                 )
@@ -1002,3 +1079,13 @@ def create_dataset_tag(dataset_name: Optional[str], *args):
     for arg in args:
         tag += f"_{arg}"
     return tag
+
+
+def convert_bytes_to_human_readable_str(num_bytes: int) -> str:
+    if num_bytes >= 1e9:
+        num_bytes_str = f"{round(num_bytes / 1e9)}GB"
+    elif num_bytes >= 1e6:
+        num_bytes_str = f"{round(num_bytes / 1e6)}MB"
+    else:
+        num_bytes_str = f"{round(num_bytes / 1e3)}KB"
+    return num_bytes_str

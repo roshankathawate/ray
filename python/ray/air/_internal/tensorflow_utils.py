@@ -1,10 +1,11 @@
-from typing import TYPE_CHECKING, Dict, List, Optional, Union, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pyarrow
 import tensorflow as tf
 
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
+from ray.air.util.tensor_extensions.arrow import get_arrow_extension_tensor_types
 
 if TYPE_CHECKING:
     from ray.data._internal.pandas_block import PandasBlockSchema
@@ -80,7 +81,10 @@ def get_type_spec(
     columns: Union[str, List[str]],
 ) -> Union[tf.TypeSpec, Dict[str, tf.TypeSpec]]:
     import pyarrow as pa
-    from ray.data.extensions import TensorDtype, ArrowTensorType
+
+    from ray.data.extensions import TensorDtype
+
+    tensor_extension_types = get_arrow_extension_tensor_types()
 
     assert not isinstance(schema, type)
 
@@ -97,7 +101,7 @@ def get_type_spec(
 
     def get_shape(dtype: Union[np.dtype, pa.DataType]) -> Tuple[int, ...]:
         shape = (None,)
-        if isinstance(dtype, ArrowTensorType):
+        if isinstance(dtype, tensor_extension_types):
             dtype = dtype.to_pandas_dtype()
         if isinstance(dtype, TensorDtype):
             shape += dtype.element_shape

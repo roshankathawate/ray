@@ -66,7 +66,6 @@ def configure_key_pair(config):
 
 def configure_run_options(config):
     ssh_user = config["auth"]["ssh_user"]
-    container_name = config["docker"].get("container_name", "ray_container")
     # By default enable TLS for Head-Worker grpc communication
     tls_enable = (
         1 if config["provider"]["vsphere_config"].get("tls_enable", True) else 0
@@ -112,14 +111,6 @@ def configure_run_options(config):
         )
 
     return config
-
-
-def is_dynamic_passthrough(node_config):
-    if "gpu_config" in node_config:
-        gpu_config = node_config["gpu_config"]
-        if gpu_config and gpu_config["dynamic_pci_passthrough"]:
-            return True
-    return False
 
 
 def disable_node_updater(config):
