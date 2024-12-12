@@ -72,6 +72,7 @@ class KubernetesHttpApiClient(object):
             else:
                 configuration.verify_ssl = False
             self.client = client.ApiClient(configuration)
+
         # Use customObjectsApi to access custom resources
         self.custom_object_api = client.CustomObjectsApi(self.client)
 
@@ -105,8 +106,60 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             # docker configurations.
             self.provider_auth = cluster_config["auth"]
             self.docker = cluster_config["docker"]
+
+            # create docker login info secret, if it exists.
+            docker_auth_secret_name = self._create_docker_auth_secrets()
+            if docker_auth_secret_name:
+                self.docker_config = {
+                    "auth_secret_name": docker_auth_secret_name,
+                }
+            else:
+                self.docker_config = None
         else:
             self._set_max_worker_nodes()
+            self._create_tls_secrets()
+
+    def _create_docker_auth_secrets(self):
+        docker_auth_secret_name = self.cluster_name + "-docker-auth"
+        docker_auth = self.vsphere_config.get("docker_auth", {})
+        username = docker_auth.get("username", None)
+        password = docker_auth.get("password", None)
+        kp = {}
+        if username and password:
+            kp["username"] = username
+            kp["password"] = password
+            registry = docker_auth.get("registry", None)
+            if registry:
+                kp["registry"] = registry
+            self._create_secret(self.namespace, docker_auth_secret_name, kp)
+            return docker_auth_secret_name
+        return None
+
+    def _create_tls_secrets(self):
+        # If token is passed that means its instance of autoscaler
+        # running inside the head node, so validate if tls server cert
+        # and key are available then create a secret with their
+        # value.
+        tls_enabled = os.environ.get("RAY_USE_TLS", None) == "1"
+        if not SERVICE_ACCOUNT_TOKEN or not tls_enabled:
+            return
+
+        tls_cert = None
+        tls_key = None
+
+        cert_path = os.environ.get("RAY_TLS_SERVER_CERT", None)
+        key_path = os.environ.get("RAY_TLS_SERVER_KEY", None)
+        if cert_path:
+            with open(cert_path) as f: tls_cert = f.read()
+        if key_path:
+            with open(key_path) as f: tls_key = f.read()
+
+        if tls_cert and tls_key:
+            kp = {
+                "tls.crt": tls_cert,
+                "tls.key": tls_key
+            }
+            self._create_secret(self.namespace, self.cluster_name + "-tls", kp)
 
     def list_vms(self, tag_filters: Dict[str, str]) -> Tuple[list, dict]:
         """Queries K8s for VMs in the RayCluster and filter them as per
@@ -299,7 +352,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 # config["cluster_name"])
                 if "head" in tags[TAG_RAY_NODE_NAME]:
                     # head node will be created as a part of VMRayCluster CR
-                    self._create_secret()
+                    self._create_ssh_secret()
                     self._create_vmraycluster()
                 else:
                     # Once VMRayCluster CR is created, update it to create worker
@@ -518,6 +571,8 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         ray_cluster_config["spec"]["common_node_config"][
             "vm_user"
         ] = self.provider_auth["ssh_user"]
+        if self.docker_config is not None:
+            ray_cluster_config["spec"]["docker_config"] = self.docker_config
 
         logger.info(f"Creating VmRayCluster \n{ray_cluster_config}")
         self.k8s_api_client.custom_object_api.create_namespaced_custom_object(
@@ -576,12 +631,40 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         except client.exceptions.ApiException as e:
             raise e
 
-    def _create_secret(self):
+    def _create_secret(self, namespace, name, kp):
+        data = {}
+        for k, v in kp.items():
+            # Base64 encode the SSH key
+            val = v
+            if type(v) is str:
+                val = v.encode("utf-8")
+            data[k] = base64.b64encode(val).decode("utf-8")
+
+        # Create metadata
+        metadata = client.V1ObjectMeta(name=name)
+
+        # Secret object
+        secret = client.V1Secret(
+            api_version="v1",
+            kind="Secret",
+            metadata=metadata,
+            data=data,
+            type="Opaque"
+        )
+        instance = client.CoreV1Api(self.k8s_api_client.client)
+
+        # Create the secret in the specified namespace.
+        try:
+            instance.create_namespaced_secret(namespace=namespace, body=secret)
+            logger.info(f"Secret {name} created in namespace {namespace}")
+        except client.exceptions.ApiException as e:
+            print("Failure while creating Secret [`%s`] : %s\n" % (name, e))
+
+    def _create_ssh_secret(self):
         """Create a K8s SSH secret using a local private SSH key
         specified in the config."""
 
-        # Define the namespace and secret name
-        namespace = self.namespace
+        # Define secret name
         secret_name = f"{self.cluster_name}-ssh-key"
 
         pvt_key = self.provider_auth.get("ssh_private_key")
@@ -591,25 +674,10 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         with open(private_key_path, "rb") as ssh_key:
             ssh_key_data = ssh_key.read()
 
-        # Base64 encode the SSH key
-        encoded_key = base64.b64encode(ssh_key_data).decode("utf-8")
-
-        # Create the data
-        data = {"ssh-pvt-key": encoded_key}
-
-        # Create metadata
-        metadata = client.V1ObjectMeta(name=secret_name)
-
-        # Secret object
-        secret = client.V1Secret(
-            api_version="v1", kind="Secret", metadata=metadata, data=data, type="Opaque"
-        )
-
-        api_instance = client.CoreV1Api(self.k8s_api_client.client)
-
-        # Create the secret in the specified namespace
-        api_instance.create_namespaced_secret(namespace=namespace, body=secret)
-        logger.info(f"Secret {secret_name} created in namespace {namespace}")
+        kp = {
+            "ssh-pvt-key": ssh_key_data
+        }
+        self._create_secret(self.namespace, secret_name, kp)
 
 
 def _is_ipv4(ip):
