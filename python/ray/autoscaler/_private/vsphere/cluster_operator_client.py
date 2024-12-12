@@ -244,10 +244,8 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
                 # By default it follow patch application of `merge-patch+json`
                 # so we need to remove the node ids by making them null.
                 # refs:
-                # 1. https://kubernetes.io/docs/tasks/manage-kubernetes-objects/\
-                # update-api-object-kubectl-patch/#use-a-json-merge-patch-to-update-a-deployment
-                # 2. https://github.com/kubernetes-client/python/blob/master/\
-                # kubernetes/client/api/custom_objects_api.py#L3106
+                # 1. https://kubernetes.io/docs/tasks/manage-kubernetes-objects/update-api-object-kubectl-patch/#use-a-json-merge-patch-to-update-a-deployment
+                # 2. https://github.com/kubernetes-client/python/blob/master/kubernetes/client/api/custom_objects_api.py#L3106
                 payload = {"spec": {"autoscaler_desired_workers": {node_id: None}}}
 
                 logger.info(f"Deleting VM {node_id} | payload: {payload}")
@@ -280,8 +278,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
     ) -> Optional[Dict[str, Any]]:
         """Ask cluster operator to create worker VMs"""
         logger.info(
-            f"Creating {to_be_launched_node_count} nodes with tags: {tags} \
-            and with config: {node_config}"
+            f"Creating {to_be_launched_node_count} nodes with tags: {tags} and with config: {node_config}"
         )
         created_nodes_dict = {}
         with self.lock:
@@ -548,8 +545,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
             vmray_cluster_spec = vmray_cluster_response.get("spec", {})
             common_node_config = vmray_cluster_spec.get("common_node_config", {})
             # If max_workers is not provided then default to 2
-            # ref: https://docs.ray.io/en/latest/cluster/vms/references/\
-            # ray-cluster-configuration.html#max-workers
+            # ref: https://docs.ray.io/en/latest/cluster/vms/references/ray-cluster-configuration.html#max-workers
             self.max_worker_nodes = common_node_config.get("max_workers", 2)
             logger.info(f"Max worker is set to {self.max_worker_nodes}")
 
