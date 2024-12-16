@@ -1,6 +1,7 @@
 import copy
 import os
 import re
+import tempfile
 
 import pytest
 from threading import RLock
@@ -19,7 +20,6 @@ from python.ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE,
 )
 from ray.autoscaler._private.vsphere.cluster_operator_client import (
-    DEFAULT_WORKER_NODE_TYPE,
     ClusterOperatorClient,
     VMNodeStatus,
 )
@@ -56,7 +56,10 @@ _CLUSTER_CONFIG = {
             "storage_class": "wcpe2e-nfs-profile",
         },
     },
-    "auth": {"ssh_user": "ray", "ssh_private_key": "~/id_rsa_ray.pem"},
+    "auth": {
+        "ssh_user": "ray",
+        "ssh_private_key": os.path.join(tempfile.mkdtemp(), "id_rsa_ray.pem") 
+    },
     "available_node_types": {
         "ray.head.default": {
             "resources": {},
@@ -115,7 +118,6 @@ _CLUSTER_RESPONSE = {
                 },
             },
             "max_workers": 5,
-            "min_workers": 3,
             "storage_class": "vsan-default-storage-policy",
             "vm_image": "vmi-76e37912125b9ad17",
             "vm_password_salt_hash": "$6$test1234$9/BUZHNkvq.c1miDDMG5cHLmM4V7gbYdGuF0/\
@@ -123,7 +125,10 @@ _CLUSTER_RESPONSE = {
             "vm_user": "ray-vm",
         },
         "enable_tls": True,
-        "head_node": {"port": 6254},
+        "head_node": {
+            "port": 6254,
+            "node_type": "ray.head.default"}
+        ,
         "ray_docker_image": "project-taiga-docker-local.artifactory.eng.vmware.com/\
             development/ray:milestone_2.0",
     },
@@ -141,6 +146,29 @@ _CLUSTER_RESPONSE = {
     },
 }
 
+def create_random_pvt_key():
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.hazmat.primitives import serialization
+
+    private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048
+    )
+    pem_private_key = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption()
+    )
+
+    delete_random_pvt_key()
+    file = open(_CLUSTER_CONFIG["auth"]["ssh_private_key"], 'w')
+    file.write(pem_private_key.decode())
+    file.close()
+
+def delete_random_pvt_key():
+    filename = _CLUSTER_CONFIG["auth"]["ssh_private_key"]
+    if os.path.exists(filename):
+        os.remove(filename)
 
 def mock_cluster_operator():
     def __init__(self, cluster_name: str, provider_config: dict, cluster_config: dict):
@@ -153,13 +181,14 @@ def mock_cluster_operator():
         self.k8s_api_client = MagicMock()
         if cluster_config:
             self.max_worker_nodes = cluster_config["max_workers"]
-            # self.min_worker_nodes = cluster_config["min_workers"]
             self.head_setup_commands = cluster_config["head_setup_commands"]
             self.available_node_types = cluster_config["available_node_types"]
+            self.head_node_type = cluster_config["head_node_type"]
 
             # docker configurations.
             self.provider_auth = cluster_config["auth"]
             self.docker = cluster_config["docker"]
+            self.docker_config = None
 
     with patch.object(ClusterOperatorClient, "__init__", __init__):
         operator = ClusterOperatorClient(
@@ -182,8 +211,7 @@ def test_list_vms():
     operator._get_head_name = MagicMock(return_value=head_node)
     # make sure function provides head node
     nodes, tag_cache = operator.list_vms(head_node_tags)
-    # make sure min and max number of worker nodes are set up
-    # assert operator.min_worker_nodes == 3
+    # make sure max number of worker nodes are set up
     assert operator.max_worker_nodes == 5
     assert len(nodes) == 1
     assert nodes[0] == head_node
@@ -236,7 +264,6 @@ def test_list_vms():
         assert tag_cache[node][TAG_RAY_NODE_NAME] == node
         assert tag_cache[node][TAG_RAY_NODE_STATUS] == STATUS_UNINITIALIZED
         assert tag_cache[node][TAG_RAY_NODE_KIND] == NODE_KIND_WORKER
-        assert tag_cache[node][TAG_RAY_USER_NODE_TYPE] == DEFAULT_WORKER_NODE_TYPE
 
     # In case of no tag_filters provided return head node as well as worker nodes
     tag_filters = {}
@@ -258,7 +285,6 @@ def test_list_vms():
         assert tag_cache[node][TAG_RAY_NODE_NAME] == node
         assert tag_cache[node][TAG_RAY_NODE_STATUS] == STATUS_UNINITIALIZED
         assert tag_cache[node][TAG_RAY_NODE_KIND] == NODE_KIND_WORKER
-        assert tag_cache[node][TAG_RAY_USER_NODE_TYPE] == DEFAULT_WORKER_NODE_TYPE
     # make sure the function returns nodes which are not yet initialised but are in
     # desired workers list
     cluster_response = _CLUSTER_RESPONSE.copy()
@@ -271,7 +297,6 @@ def test_list_vms():
     assert tag_cache[desired_worker][TAG_RAY_NODE_NAME] == desired_worker
     assert tag_cache[desired_worker][TAG_RAY_NODE_STATUS] == STATUS_UNINITIALIZED
     assert tag_cache[desired_worker][TAG_RAY_NODE_KIND] == NODE_KIND_WORKER
-    assert tag_cache[desired_worker][TAG_RAY_USER_NODE_TYPE] == DEFAULT_WORKER_NODE_TYPE
 
 
 def test_is_vm_power_on():
@@ -375,7 +400,9 @@ def test_create_nodes():
     operator._create_vmraycluster = MagicMock()
     head_node_name = f"{operator.cluster_name}-h-1234"
     operator._create_node_name = MagicMock(return_value=head_node_name)
+    create_random_pvt_key()
     created_nodes = operator.create_nodes(tags, 1, {})
+    delete_random_pvt_key()
     assert len(created_nodes) == 1
     assert created_nodes[head_node_name] == head_node_name
     operator._create_secret.assert_called_once()
@@ -523,7 +550,6 @@ def test__create_node_name():
     # test for worker node name
     pattern = re.compile("^(ray-cluster-w-[a-z0-9]{8})$")
     node_name = operator._create_node_name("ray-worker-node")
-    print(node_name)
     assert pattern.match(node_name) is not None
 
 
@@ -553,7 +579,7 @@ def test__create_vmraycluster():
     custom_api.create_namespaced_custom_object.assert_called_once()
 
 
-def test_test__set_tags():
+def test__set_tags():
     """Should set tags for a given node"""
     operator = mock_cluster_operator()
     node_id = "test-1"
@@ -610,14 +636,12 @@ def test_test__set_tags():
     assert new_tags[TAG_RAY_NODE_STATUS] == STATUS_UNINITIALIZED
 
 
-def test__set_min_max_worker_nodes():
+def test__set_max_worker_nodes():
     operator = mock_cluster_operator()
     cluster_response = _CLUSTER_RESPONSE.copy()
     operator._get_cluster_response = MagicMock(return_value=cluster_response)
-    operator.min_worker_nodes = None
     operator.max_worker_nodes = None
-    operator._set_min_max_worker_nodes()
-    assert operator.min_worker_nodes == 3
+    operator._set_max_worker_nodes()
     assert operator.max_worker_nodes == 5
 
 
