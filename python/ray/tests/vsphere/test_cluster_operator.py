@@ -58,7 +58,7 @@ _CLUSTER_CONFIG = {
     },
     "auth": {
         "ssh_user": "ray",
-        "ssh_private_key": os.path.join(tempfile.mkdtemp(), "id_rsa_ray.pem") 
+        "ssh_private_key": os.path.join(tempfile.mkdtemp(), "id_rsa_ray.pem"),
     },
     "available_node_types": {
         "ray.head.default": {
@@ -125,10 +125,7 @@ _CLUSTER_RESPONSE = {
             "vm_user": "ray-vm",
         },
         "enable_tls": True,
-        "head_node": {
-            "port": 6254,
-            "node_type": "ray.head.default"}
-        ,
+        "head_node": {"port": 6254, "node_type": "ray.head.default"},
         "ray_docker_image": "project-taiga-docker-local.artifactory.eng.vmware.com/\
             development/ray:milestone_2.0",
     },
@@ -146,29 +143,29 @@ _CLUSTER_RESPONSE = {
     },
 }
 
+
 def create_random_pvt_key():
     from cryptography.hazmat.primitives.asymmetric import rsa
     from cryptography.hazmat.primitives import serialization
 
-    private_key = rsa.generate_private_key(
-        public_exponent=65537,
-        key_size=2048
-    )
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     pem_private_key = private_key.private_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.NoEncryption()
+        encryption_algorithm=serialization.NoEncryption(),
     )
 
     delete_random_pvt_key()
-    file = open(_CLUSTER_CONFIG["auth"]["ssh_private_key"], 'w')
+    file = open(_CLUSTER_CONFIG["auth"]["ssh_private_key"], "w")
     file.write(pem_private_key.decode())
     file.close()
+
 
 def delete_random_pvt_key():
     filename = _CLUSTER_CONFIG["auth"]["ssh_private_key"]
     if os.path.exists(filename):
         os.remove(filename)
+
 
 def mock_cluster_operator():
     def __init__(self, cluster_name: str, provider_config: dict, cluster_config: dict):

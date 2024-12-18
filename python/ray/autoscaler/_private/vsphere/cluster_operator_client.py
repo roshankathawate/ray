@@ -150,15 +150,14 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         cert_path = os.environ.get("RAY_TLS_SERVER_CERT", None)
         key_path = os.environ.get("RAY_TLS_SERVER_KEY", None)
         if cert_path:
-            with open(cert_path) as f: tls_cert = f.read()
+            with open(cert_path) as f:
+                tls_cert = f.read()
         if key_path:
-            with open(key_path) as f: tls_key = f.read()
+            with open(key_path) as f:
+                tls_key = f.read()
 
         if tls_cert and tls_key:
-            kp = {
-                "tls.crt": tls_cert,
-                "tls.key": tls_key
-            }
+            kp = {"tls.crt": tls_cert, "tls.key": tls_key}
             self._create_secret(self.namespace, self.cluster_name + "-tls", kp)
 
     def list_vms(self, tag_filters: Dict[str, str]) -> Tuple[list, dict]:
@@ -641,11 +640,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
 
         # Secret object
         secret = client.V1Secret(
-            api_version="v1",
-            kind="Secret",
-            metadata=metadata,
-            data=data,
-            type="Opaque"
+            api_version="v1", kind="Secret", metadata=metadata, data=data, type="Opaque"
         )
         instance = client.CoreV1Api(self.k8s_api_client.client)
 
@@ -670,9 +665,7 @@ class ClusterOperatorClient(KubernetesHttpApiClient):
         with open(private_key_path, "rb") as ssh_key:
             ssh_key_data = ssh_key.read()
 
-        kp = {
-            "ssh-pvt-key": ssh_key_data
-        }
+        kp = {"ssh-pvt-key": ssh_key_data}
         self._create_secret(self.namespace, secret_name, kp)
 
 
